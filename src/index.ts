@@ -8,6 +8,11 @@ export * from './authentication/UnionCredentialsExtractor';
 export * from './authentication/UnsecureConstantCredentialsExtractor';
 export * from './authentication/UnsecureWebIdExtractor';
 
+// Authorization/ABAC
+export * from './authorization/abac/AbacDataLoader';
+export * from './authorization/abac/AbacTypes';
+export * from './authorization/abac/AbacUtil';
+
 // Authorization/Access
 export * from './authorization/access/AccessChecker';
 export * from './authorization/access/AgentAccessChecker';
