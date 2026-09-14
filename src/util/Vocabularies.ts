@@ -102,6 +102,23 @@ export function extendVocabulary<TBase extends string, TLocal extends string, TN
   return createVocabulary(vocabulary.namespace, ...allNames);
 }
 
+export const ABAC = createVocabulary(
+  'https://w3id.org/solid-abac#',
+
+  // Attribute definitions
+  'appliesTo',
+  'defaultValue',
+  'AttributeDefinition',
+  'Subject',
+
+  // Rules
+  'grants',
+  'allOf',
+  'anyOf',
+  'noneOf',
+  'Rule',
+);
+
 export const ACL = createVocabulary(
   'http://www.w3.org/ns/auth/acl#',
   'accessTo',
