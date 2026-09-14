@@ -1,0 +1,31 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": "Grants access based on the requesting agent's attributes in the ABAC store. Never returns `false`.",
+      "@id": "urn:solid-server:default:AbacPermissionReader",
+      "@type": "AbacPermissionReader",
+      "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+      "excludePaths": [
+        "^$",
+        "^/\\..*"
+      ],
+      "loader": {
+        "comment": "Reads the ABAC store directly through the ResourceStore, bypassing authorization.",
+        "@id": "urn:solid-server:default:AbacDataLoader",
+        "@type": "AbacDataLoader",
+        "store": { "@id": "urn:solid-server:default:ResourceStore" },
+        "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+        "container": ".abac/"
+      }
+    },
+    {
+      "comment": "Adds the ABAC reader to the existing union, so an explicit `false` from any other reader still wins.",
+      "@id": "urn:solid-server:default:UnionPermissionReader",
+      "@type": "UnionPermissionReader",
+      "readers": [
+        { "@id": "urn:solid-server:default:AbacPermissionReader" }
+      ]
+    }
+  ]
+}

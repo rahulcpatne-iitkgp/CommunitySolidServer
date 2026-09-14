@@ -14,6 +14,8 @@
         "@type": "AuxiliaryReader",
         "auxiliaryStrategy": { "@id": "urn:solid-server:default:AuxiliaryStrategy" },
         "reader": {
+          "comment": "Identified so other configurations can add readers to this union.",
+          "@id": "urn:solid-server:default:UnionPermissionReader",
           "@type": "UnionPermissionReader",
           "readers": [
             {

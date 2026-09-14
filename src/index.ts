@@ -10,6 +10,7 @@ export * from './authentication/UnsecureWebIdExtractor';
 
 // Authorization/ABAC
 export * from './authorization/abac/AbacDataLoader';
+export * from './authorization/abac/AbacPermissionReader';
 export * from './authorization/abac/AbacTypes';
 export * from './authorization/abac/AbacUtil';
 export * from './authorization/abac/RuleEvaluator';
