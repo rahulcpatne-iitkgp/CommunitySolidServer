@@ -41,12 +41,22 @@
       ]
     },
     {
-      "comment": "Adds the ABAC reader to the existing union, so an explicit `false` from any other reader still wins.",
-      "@id": "urn:solid-server:default:UnionPermissionReader",
-      "@type": "UnionPermissionReader",
-      "readers": [
-        { "@id": "urn:solid-server:default:AbacPermissionReader" }
-      ]
+      "comment": [
+        "Evaluates ABAC grants beside ACP, so they are interpreted the same way:",
+        "an ACR is only accessible through Control, and create and delete depend on the parent container."
+      ],
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:AuthAuxiliaryReader" },
+      "overrideParameters": {
+        "@type": "AuthAuxiliaryReader",
+        "reader": {
+          "@type": "UnionPermissionReader",
+          "readers": [
+            { "@id": "urn:solid-server:default:AcpReader" },
+            { "@id": "urn:solid-server:default:AbacPermissionReader" }
+          ]
+        }
+      }
     }
   ]
 }
