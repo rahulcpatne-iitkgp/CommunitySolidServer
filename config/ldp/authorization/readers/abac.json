@@ -20,6 +20,27 @@
       }
     },
     {
+      "comment": "Routes requests on the ABAC store to the reader that guards it.",
+      "@id": "urn:solid-server:default:PathBasedReader",
+      "@type": "PathBasedReader",
+      "paths": [
+        {
+          "PathBasedReader:_paths_key": "^/\\.abac(/.*)?$",
+          "PathBasedReader:_paths_value": {
+            "comment": "Only the ABAC administrator may write the store, while anyone may read its definitions and rules. Returns explicit `false`.",
+            "@id": "urn:solid-server:default:AbacStoreReader",
+            "@type": "AbacStoreReader",
+            "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+            "admin": {
+              "@id": "urn:solid-server:custom:variable:abacAdmin",
+              "@type": "Variable"
+            },
+            "container": ".abac/"
+          }
+        }
+      ]
+    },
+    {
       "comment": "Adds the ABAC reader to the existing union, so an explicit `false` from any other reader still wins.",
       "@id": "urn:solid-server:default:UnionPermissionReader",
       "@type": "UnionPermissionReader",

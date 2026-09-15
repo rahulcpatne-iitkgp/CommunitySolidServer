@@ -10,6 +10,7 @@ import { getDefaultVariables, getPresetConfigPath, getTestConfigPath, instantiat
 const port = getPort('AbacServer');
 const baseUrl = `http://localhost:${port}/`;
 
+const ADMIN = 'https://admin.example/profile/card#me';
 const ALICE = 'https://alice.example/profile/card#me';
 const BOB = 'https://bob.example/profile/card#me';
 
@@ -42,7 +43,7 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     const instances = await instantiateFromConfig(
       'urn:solid-server:test:Instances',
       [ getPresetConfigPath('storage/backend/memory.json'), getTestConfigPath('ldp-with-abac.json') ],
-      getDefaultVariables(port, baseUrl),
+      { ...getDefaultVariables(port, baseUrl), 'urn:solid-server:custom:variable:abacAdmin': ADMIN },
     ) as Record<string, any>;
     ({ app, store } = instances);
     await app.start();
