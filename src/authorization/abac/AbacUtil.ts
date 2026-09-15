@@ -79,20 +79,22 @@ export function* getRules(data: Store): Iterable<Rule> {
 }
 
 /**
- * Builds the attribute vector for the given subject, falling back to each definition's default.
+ * Builds the attribute vector of an entity, taking each value from the first of the given entities
+ * that assigns it, and falling back to each definition's default.
  *
  * @param definitions - Definitions of every attribute the vector should cover.
  * @param assignments - Dataset holding the assignments, keyed by the entity as RDF subject.
- * @param subject - Entity to build the vector for.
+ * @param entities - The entity followed by those it inherits values from, most specific first.
  */
 export function buildAttributeVector(
   definitions: Iterable<AttributeDefinition>,
   assignments: Store,
-  subject: NamedNode,
+  entities: NamedNode[],
 ): AttributeVector {
   const vector: AttributeVector = {};
   for (const definition of definitions) {
-    const assigned = assignments.getObjects(subject, DataFactory.namedNode(definition.iri), null)[0];
+    const attribute = DataFactory.namedNode(definition.iri);
+    const assigned = entities.flatMap((entity): Term[] => assignments.getObjects(entity, attribute, null))[0];
     vector[definition.iri] = assigned?.value ?? definition.defaultValue;
   }
   return vector;

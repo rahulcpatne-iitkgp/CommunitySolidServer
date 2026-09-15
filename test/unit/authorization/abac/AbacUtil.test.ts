@@ -1,3 +1,4 @@
+import type { NamedNode } from '@rdfjs/types';
 import { DataFactory, Parser, Store } from 'n3';
 import {
   buildAttributeVector,
@@ -43,7 +44,7 @@ describe('AbacUtil', (): void => {
       expect([ ...getAttributeDefinitions(definitions) ]).toEqual([
         { iri: `${ex}role`, appliesTo: ABAC.Subject, defaultValue: `${ex}None` },
         { iri: `${ex}department`, appliesTo: ABAC.Subject, defaultValue: `${ex}Unknown` },
-        { iri: `${ex}category`, appliesTo: `${ABAC.namespace}Resource`, defaultValue: `${ex}Any` },
+        { iri: `${ex}category`, appliesTo: ABAC.Resource, defaultValue: `${ex}Any` },
       ]);
     });
 
@@ -85,7 +86,7 @@ describe('AbacUtil', (): void => {
 
     it('uses the assigned value where there is one, the default otherwise.', (): void => {
       const assignments = parse(`<${alice}> ex:role ex:Doctor ; ex:clearance ex:High .`);
-      expect(buildAttributeVector(defined, assignments, namedNode(alice))).toEqual({
+      expect(buildAttributeVector(defined, assignments, [ namedNode(alice) ])).toEqual({
         [`${ex}role`]: `${ex}Doctor`,
         [`${ex}department`]: `${ex}Unknown`,
         [`${ex}category`]: `${ex}Any`,
@@ -93,10 +94,25 @@ describe('AbacUtil', (): void => {
     });
 
     it('resolves every attribute for an entity that was never assigned anything.', (): void => {
-      expect(buildAttributeVector(defined, new Store(), namedNode(alice))).toEqual({
+      expect(buildAttributeVector(defined, new Store(), [ namedNode(alice) ])).toEqual({
         [`${ex}role`]: `${ex}None`,
         [`${ex}department`]: `${ex}Unknown`,
         [`${ex}category`]: `${ex}Any`,
+      });
+    });
+
+    it('takes each value from the most specific entity that assigns it.', (): void => {
+      const records = `${baseUrl}records/`;
+      const note = `${records}2026/note.ttl`;
+      const assignments = parse(`
+        <${records}> ex:category ex:Medical ; ex:department ex:Cardiology .
+        <${note}> ex:department ex:Emergency .
+      `);
+      const entities = [ note, `${records}2026/`, records, baseUrl ].map((entity): NamedNode => namedNode(entity));
+      expect(buildAttributeVector(defined, assignments, entities)).toEqual({
+        [`${ex}role`]: `${ex}None`,
+        [`${ex}department`]: `${ex}Emergency`,
+        [`${ex}category`]: `${ex}Medical`,
       });
     });
   });

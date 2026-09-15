@@ -1,6 +1,6 @@
 /**
  * The definition of a single attribute, as found in the `/.abac/definitions/` subtree.
- * `appliesTo` is recorded but not yet enforced.
+ * `appliesTo` is the kind of entity it describes, a subject or a resource.
  */
 export interface AttributeDefinition {
   iri: string;
@@ -29,6 +29,6 @@ export interface Rule {
 }
 
 /**
- * Every defined attribute IRI mapped to its resolved value for one entity.
+ * Every defined attribute IRI mapped to its resolved value.
  */
 export type AttributeVector = Record<string, string>;
