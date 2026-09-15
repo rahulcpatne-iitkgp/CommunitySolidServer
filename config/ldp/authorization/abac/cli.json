@@ -1,0 +1,21 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "@id": "urn:solid-server-app-setup:default:CliExtractor",
+      "@type": "YargsCliExtractor",
+      "parameters": [
+        {
+          "@type": "YargsParameter",
+          "name": "abacAdmin",
+          "options": {
+            "demandOption": true,
+            "requiresArg": true,
+            "type": "string",
+            "describe": "WebID of the ABAC administrator, the only agent that may write the ABAC store."
+          }
+        }
+      ]
+    }
+  ]
+}
