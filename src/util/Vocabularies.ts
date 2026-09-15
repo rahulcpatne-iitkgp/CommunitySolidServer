@@ -109,6 +109,7 @@ export const ABAC = createVocabulary(
   'appliesTo',
   'defaultValue',
   'AttributeDefinition',
+  'Resource',
   'Subject',
 
   // Rules

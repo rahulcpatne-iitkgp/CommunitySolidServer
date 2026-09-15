@@ -22,6 +22,7 @@ export class AbacDataLoader {
   private readonly store: ResourceStore;
   private readonly definitionsContainer: string;
   private readonly subjectsContainer: string;
+  private readonly resourcesContainer: string;
   private readonly rulesContainer: string;
 
   /**
@@ -34,6 +35,7 @@ export class AbacDataLoader {
     const root = joinUrl(baseUrl, container);
     this.definitionsContainer = joinUrl(root, 'definitions/');
     this.subjectsContainer = joinUrl(root, 'subjects/');
+    this.resourcesContainer = joinUrl(root, 'resources/');
     this.rulesContainer = joinUrl(root, 'rules/');
   }
 
@@ -45,6 +47,11 @@ export class AbacDataLoader {
   /** All subject attribute assignments found in the store. */
   public async readSubjectAttributes(): Promise<Store> {
     return this.readContainer({ path: this.subjectsContainer });
+  }
+
+  /** All resource attribute assignments found in the store. */
+  public async readResourceAttributes(): Promise<Store> {
+    return this.readContainer({ path: this.resourcesContainer });
   }
 
   /** All rules of the global catalogue. */

@@ -43,6 +43,7 @@ function document(path: string, quads: Quad[]): Representation {
 describe('An AbacDataLoader', (): void => {
   const definitions = `${baseUrl}.abac/definitions/`;
   const subjects = `${baseUrl}.abac/subjects/`;
+  const resourceAttributes = `${baseUrl}.abac/resources/`;
   const rules = `${baseUrl}.abac/rules/`;
 
   let resources: Record<string, Representation | Error>;
@@ -76,7 +77,7 @@ describe('An AbacDataLoader', (): void => {
     expect(result.countQuads(null, null, null, null)).toBe(4);
   });
 
-  it('descends into nested containers to read a subtree laid out by WebID host and path.', async(): Promise<void> => {
+  it('descends into nested containers to read subtrees laid out by WebID or resource path.', async(): Promise<void> => {
     const host = `${subjects}alice.example/`;
     const profile = `${host}profile/`;
     resources[subjects] = container(subjects, [ host ]);
@@ -85,9 +86,15 @@ describe('An AbacDataLoader', (): void => {
     resources[`${profile}card`] = document(`${profile}card`, parse(
       `<https://alice.example/profile/card#me> ex:role ex:Doctor .`,
     ));
+    const records = `${resourceAttributes}records/`;
+    resources[resourceAttributes] = container(resourceAttributes, [ records ]);
+    resources[records] = container(records, [ `${records}2026` ]);
+    resources[`${records}2026`] = document(`${records}2026`, parse(
+      `<${baseUrl}records/2026/> ex:category ex:Medical ; ex:sensitivity ex:Internal .`,
+    ));
 
-    const result = await loader.readSubjectAttributes();
-    expect(result.countQuads(null, null, null, null)).toBe(1);
+    await expect(loader.readSubjectAttributes()).resolves.toEqual(expect.objectContaining({ size: 1 }));
+    await expect(loader.readResourceAttributes()).resolves.toEqual(expect.objectContaining({ size: 2 }));
   });
 
   it('treats a missing container as empty, so it works before the store exists.', async(): Promise<void> => {
