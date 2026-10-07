@@ -10,6 +10,10 @@
       "@type": "UnionCredentialsExtractor",
       "extractors": [
         { "@type": "UnsecureWebIdExtractor" },
+        {
+          "comment": "Records the circumstances of the request, so authorization can take them into account.",
+          "@type": "EnvironmentCredentialsExtractor"
+        },
         { "@type": "PublicCredentialsExtractor" }
       ]
     }

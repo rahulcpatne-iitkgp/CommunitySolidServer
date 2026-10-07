@@ -55,6 +55,13 @@ describe('A PermissionBasedAuthorizer', (): void => {
     await expect(authorizer.handle(input)).rejects.toThrow(ForbiddenHttpError);
   });
 
+  it('throws an UnauthorizedHttpError when only unrelated context was recorded.', async(): Promise<void> => {
+    input.credentials = { environment: { timestamp: new Date() }};
+    input.requestedModes = new IdentifierSetMultiMap<AccessMode>([[ identifier, AccessMode.read ]]);
+    input.availablePermissions = new IdentifierMap([[ identifier, { read: false }]]);
+    await expect(authorizer.handle(input)).rejects.toThrow(UnauthorizedHttpError);
+  });
+
   it('defaults to empty permissions for the Authorization.', async(): Promise<void> => {
     await expect(authorizer.handle(input)).resolves.toBeUndefined();
   });

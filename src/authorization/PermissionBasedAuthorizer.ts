@@ -100,10 +100,13 @@ export class PermissionBasedAuthorizer extends Authorizer {
 
   /**
    * Checks whether the agent is authenticated (logged in) or not (public/anonymous).
+   * Only the credentials that identify the requester count:
+   * `Credentials` also carries unrelated context, which says nothing about whether anyone logged in.
    *
    * @param credentials - Credentials to check.
    */
   private isAuthenticated(credentials: Credentials): boolean {
-    return Object.values(credentials).some((cred): boolean => cred !== undefined);
+    return [ credentials.agent, credentials.client, credentials.issuer ]
+      .some((cred): boolean => cred !== undefined);
   }
 }

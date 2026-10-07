@@ -30,6 +30,10 @@
             ]
           },
           {
+            "comment": "Records the circumstances of the request, so authorization can take them into account.",
+            "@type": "EnvironmentCredentialsExtractor"
+          },
+          {
             "@id": "urn:solid-server:default:PublicCredentialsExtractor",
             "@type": "PublicCredentialsExtractor"
           }

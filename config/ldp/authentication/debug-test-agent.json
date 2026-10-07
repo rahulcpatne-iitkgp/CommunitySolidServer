@@ -13,6 +13,10 @@
           "@type": "UnsecureConstantCredentialsExtractor",
           "agent": "http://test.com/card#me"
         },
+        {
+          "comment": "Records the circumstances of the request, so authorization can take them into account.",
+          "@type": "EnvironmentCredentialsExtractor"
+        },
         { "@type": "PublicCredentialsExtractor" }
       ]
     }
