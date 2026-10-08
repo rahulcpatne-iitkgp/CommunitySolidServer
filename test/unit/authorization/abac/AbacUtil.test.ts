@@ -2,6 +2,7 @@ import type { NamedNode } from '@rdfjs/types';
 import { DataFactory, Parser, Store } from 'n3';
 import {
   buildAttributeVector,
+  buildEnvironmentVector,
   getAttributeDefinitions,
   getRules,
 } from '../../../../src/authorization/abac/AbacUtil';
@@ -113,6 +114,18 @@ describe('AbacUtil', (): void => {
         [`${ex}role`]: `${ex}None`,
         [`${ex}department`]: `${ex}Emergency`,
         [`${ex}category`]: `${ex}Medical`,
+      });
+    });
+  });
+
+  describe('#buildEnvironmentVector', (): void => {
+    const defined = [ ...getAttributeDefinitions(definitions) ];
+
+    it('uses the resolved value where there is one, the default otherwise.', (): void => {
+      expect(buildEnvironmentVector(defined, { [`${ex}role`]: `${ex}Doctor` })).toEqual({
+        [`${ex}role`]: `${ex}Doctor`,
+        [`${ex}department`]: `${ex}Unknown`,
+        [`${ex}category`]: `${ex}Any`,
       });
     });
   });

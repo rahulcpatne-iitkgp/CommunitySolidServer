@@ -15,6 +15,7 @@ export * from './authorization/abac/AbacPermissionReader';
 export * from './authorization/abac/AbacStoreReader';
 export * from './authorization/abac/AbacTypes';
 export * from './authorization/abac/AbacUtil';
+export * from './authorization/abac/EnvironmentAttributeResolver';
 export * from './authorization/abac/RuleEvaluator';
 
 // Authorization/Access

@@ -99,3 +99,21 @@ export function buildAttributeVector(
   }
   return vector;
 }
+
+/**
+ * Builds the attribute vector of the request environment,
+ * taking each value from those derived from the request and falling back to each definition's default.
+ *
+ * @param definitions - Definitions of every attribute the vector should cover.
+ * @param resolved - Values derived from the request, which need not cover every definition.
+ */
+export function buildEnvironmentVector(
+  definitions: Iterable<AttributeDefinition>,
+  resolved: AttributeVector,
+): AttributeVector {
+  const vector: AttributeVector = {};
+  for (const definition of definitions) {
+    vector[definition.iri] = resolved[definition.iri] ?? definition.defaultValue;
+  }
+  return vector;
+}
