@@ -5,9 +5,12 @@ import Describe = jest.Describe;
 
 const portNames = [
   // Integration
+  'AbacEnvironment',
+  'AbacEnvironmentOutside',
   'AbacResources',
   'AbacServer',
   'AbacStore',
+  'AbacTokenBinding',
   'Accounts',
   'AcpServer',
   'Conditions',
