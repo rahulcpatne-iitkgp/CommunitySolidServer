@@ -2,10 +2,28 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Grants access based on the attributes of the requesting agent and the target resource. Never returns `false`.",
+      "comment": [
+        "Grants access based on the attributes of the requesting agent, the target resource and the request itself.",
+        "Never returns `false`."
+      ],
       "@id": "urn:solid-server:default:AbacPermissionReader",
       "@type": "AbacPermissionReader",
       "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
+      "environmentResolver": {
+        "comment": [
+          "Values the attributes describing the request itself.",
+          "Override this instance to set the business hours and the internal networks of a deployment."
+        ],
+        "@id": "urn:solid-server:default:EnvironmentAttributeResolver",
+        "@type": "EnvironmentAttributeResolver",
+        "businessHoursStart": "09:00",
+        "businessHoursEnd": "17:00",
+        "internalNetworks": [
+          "^127\\.",
+          "^::1$",
+          "^::ffff:127\\."
+        ]
+      },
       "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
       "excludePaths": [
         "^$",

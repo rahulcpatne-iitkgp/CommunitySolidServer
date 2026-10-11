@@ -3,6 +3,7 @@ export * from './authentication/BearerWebIdExtractor';
 export * from './authentication/Credentials';
 export * from './authentication/CredentialsExtractor';
 export * from './authentication/DPoPWebIdExtractor';
+export * from './authentication/EnvironmentCredentialsExtractor';
 export * from './authentication/PublicCredentialsExtractor';
 export * from './authentication/UnionCredentialsExtractor';
 export * from './authentication/UnsecureConstantCredentialsExtractor';
@@ -14,6 +15,7 @@ export * from './authorization/abac/AbacPermissionReader';
 export * from './authorization/abac/AbacStoreReader';
 export * from './authorization/abac/AbacTypes';
 export * from './authorization/abac/AbacUtil';
+export * from './authorization/abac/EnvironmentAttributeResolver';
 export * from './authorization/abac/RuleEvaluator';
 
 // Authorization/Access

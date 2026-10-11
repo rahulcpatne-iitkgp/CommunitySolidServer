@@ -109,8 +109,27 @@ export const ABAC = createVocabulary(
   'appliesTo',
   'defaultValue',
   'AttributeDefinition',
+  'Environment',
   'Resource',
   'Subject',
+
+  // Environment attributes, computed per request rather than assigned
+  'authMethod',
+  'dayType',
+  'network',
+  'period',
+
+  // Environment attribute values
+  'BearerToken',
+  'BoundToken',
+  'BusinessHours',
+  'External',
+  'Internal',
+  'NoCredentials',
+  'OutOfHours',
+  'Unsecure',
+  'Weekend',
+  'Workday',
 
   // Rules
   'grants',

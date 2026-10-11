@@ -1,5 +1,6 @@
 import type { NamedNode } from '@rdfjs/types';
 import { DataFactory } from 'n3';
+import type { RequestEnvironment } from '../../authentication/EnvironmentCredentialsExtractor';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../../logging/LogUtil';
 import type { IdentifierStrategy } from '../../util/identifiers/IdentifierStrategy';
@@ -13,7 +14,9 @@ import { AclMode } from '../permissions/AclPermissionSet';
 import { AccessMode } from '../permissions/Permissions';
 import type { PermissionMap } from '../permissions/Permissions';
 import type { AbacDataLoader } from './AbacDataLoader';
-import { buildAttributeVector, getAttributeDefinitions, getRules } from './AbacUtil';
+import type { AttributeDefinition, AttributeVector } from './AbacTypes';
+import { buildAttributeVector, buildEnvironmentVector, getAttributeDefinitions, getRules } from './AbacUtil';
+import type { EnvironmentAttributeResolver } from './EnvironmentAttributeResolver';
 import { evaluateRules } from './RuleEvaluator';
 
 const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
@@ -24,8 +27,8 @@ const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
 } as const;
 
 /**
- * Grants access based on the attributes of the requesting agent and of each target resource in the ABAC store,
- * matched against the rules of the global catalogue.
+ * Grants access based on the attributes of the requesting agent, of each target resource in the ABAC store,
+ * and of the circumstances of the request, matched against the rules of the global catalogue.
  * A resource inherits the attribute values of its closest ancestor that assigns them.
  *
  * Never returns `false`, only `true` or nothing, so it can add access on top of WAC/ACP but never remove any.
@@ -35,12 +38,14 @@ export class AbacPermissionReader extends PermissionReader {
 
   private readonly loader: AbacDataLoader;
   private readonly identifierStrategy: IdentifierStrategy;
+  private readonly environmentResolver: EnvironmentAttributeResolver;
   private readonly baseUrl: string;
   private readonly excludePaths: RegExp[];
 
   /**
    * @param loader - Used to read the ABAC store.
    * @param identifierStrategy - Used to find the ancestors a resource inherits attribute values from.
+   * @param environmentResolver - Used to value the attributes describing the request itself.
    * @param baseUrl - Base URL of the server.
    * @param excludePaths - Regular expressions, relative to the base URL and starting with a slash,
    *                       of resources this reader never grants access to.
@@ -48,12 +53,14 @@ export class AbacPermissionReader extends PermissionReader {
   public constructor(
     loader: AbacDataLoader,
     identifierStrategy: IdentifierStrategy,
+    environmentResolver: EnvironmentAttributeResolver,
     baseUrl: string,
     excludePaths: string[],
   ) {
     super();
     this.loader = loader;
     this.identifierStrategy = identifierStrategy;
+    this.environmentResolver = environmentResolver;
     this.baseUrl = ensureTrailingSlash(baseUrl);
     this.excludePaths = excludePaths.map((path): RegExp => new RegExp(path, 'u'));
   }
@@ -80,6 +87,10 @@ export class AbacPermissionReader extends PermissionReader {
       subjectData,
       [ DataFactory.namedNode(webId) ],
     );
+    const environmentVector = this.resolveEnvironment(
+      definitions.filter(({ appliesTo }): boolean => appliesTo === ABAC.Environment),
+      credentials.environment as RequestEnvironment | undefined,
+    );
     const rules = [ ...getRules(ruleData) ];
 
     for (const target of requestedModes.distinctKeys()) {
@@ -89,6 +100,7 @@ export class AbacPermissionReader extends PermissionReader {
       }
       const vector = {
         ...subjectVector,
+        ...environmentVector,
         ...buildAttributeVector(resourceDefinitions, resourceData, this.getAncestors(target)),
       };
       const modes = evaluateRules(rules, vector);
@@ -113,6 +125,21 @@ export class AbacPermissionReader extends PermissionReader {
     }
     const relative = identifier.path.slice(trimTrailingSlashes(this.baseUrl).length);
     return this.excludePaths.some((regex): boolean => regex.test(relative));
+  }
+
+  /**
+   * Values the environment attributes against the circumstances of the request.
+   * Falls back to their declared defaults when nothing recorded those circumstances,
+   * which means the extractor that records them is missing from the configuration.
+   */
+  private resolveEnvironment(definitions: AttributeDefinition[], environment?: RequestEnvironment): AttributeVector {
+    if (definitions.length === 0) {
+      return {};
+    }
+    if (!environment) {
+      this.logger.warn(`No request context was recorded, so environment attributes fall back to their defaults.`);
+    }
+    return buildEnvironmentVector(definitions, environment ? this.environmentResolver.resolve(environment) : {});
   }
 
   /**

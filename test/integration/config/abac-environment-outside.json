@@ -1,0 +1,19 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": [
+        "Puts every request outside the environment policy, whenever and wherever it is made:",
+        "a window of zero length contains no moment, and no address counts as internal."
+      ],
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:EnvironmentAttributeResolver" },
+      "overrideParameters": {
+        "@type": "EnvironmentAttributeResolver",
+        "businessHoursStart": "00:00",
+        "businessHoursEnd": "00:00",
+        "internalNetworks": []
+      }
+    }
+  ]
+}

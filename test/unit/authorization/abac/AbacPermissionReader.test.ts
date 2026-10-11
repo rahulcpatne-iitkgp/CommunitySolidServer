@@ -2,6 +2,7 @@ import { Parser, Store } from 'n3';
 import type { Credentials } from '../../../../src/authentication/Credentials';
 import type { AbacDataLoader } from '../../../../src/authorization/abac/AbacDataLoader';
 import { AbacPermissionReader } from '../../../../src/authorization/abac/AbacPermissionReader';
+import { EnvironmentAttributeResolver } from '../../../../src/authorization/abac/EnvironmentAttributeResolver';
 import { AclMode } from '../../../../src/authorization/permissions/AclPermissionSet';
 import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
 import { AccessMode } from '../../../../src/authorization/permissions/Permissions';
@@ -29,6 +30,10 @@ describe('An AbacPermissionReader', (): void => {
     ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .
     ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Uncategorised .
   `);
+  const withPeriod = parse(`
+    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .
+    abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ; abac:defaultValue abac:OutOfHours .
+  `);
   // Each also claims an attribute that describes the other kind of entity, which must be ignored.
   const subjects = parse(`<${alice}> ex:role ex:Doctor ; ex:category ex:Medical .`);
   const resources = parse(`
@@ -48,18 +53,36 @@ describe('An AbacPermissionReader', (): void => {
   const medical = parse(`
     <#R003> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
   `);
+  const duringHours = parse(`
+    <#R004> a abac:Rule ; abac:grants acl:Read ;
+      abac:allOf [ ex:role ex:Doctor ], [ abac:period abac:BusinessHours ] .
+  `);
+
+  const businessHours = new Date('2026-10-07T10:00:00');
+  const outOfHours = new Date('2026-10-07T22:00:00');
 
   let credentials: Credentials;
   let requestedModes: AccessMap;
 
-  function createReader(rules: Store, excludePaths = [ '^$', '^/\\..*' ]): AbacPermissionReader {
+  function createReader(
+    rules: Store,
+    definitionData = definitions,
+    excludePaths = [ '^$', '^/\\..*' ],
+  ): AbacPermissionReader {
     const loader = {
-      readDefinitions: jest.fn().mockResolvedValue(definitions),
+      readDefinitions: jest.fn().mockResolvedValue(definitionData),
       readSubjectAttributes: jest.fn().mockResolvedValue(subjects),
       readResourceAttributes: jest.fn().mockResolvedValue(resources),
       readRules: jest.fn().mockResolvedValue(rules),
     } satisfies Partial<AbacDataLoader> as any;
-    return new AbacPermissionReader(loader, new SingleRootIdentifierStrategy(baseUrl), baseUrl, excludePaths);
+    const resolver = new EnvironmentAttributeResolver('09:00', '17:00', [ '^127\\.' ]);
+    return new AbacPermissionReader(
+      loader,
+      new SingleRootIdentifierStrategy(baseUrl),
+      resolver,
+      baseUrl,
+      excludePaths,
+    );
   }
 
   function readRequest(...paths: string[]): AccessMap {
@@ -104,6 +127,22 @@ describe('An AbacPermissionReader', (): void => {
     compareMaps(await reader.handle({ credentials: { agent: { webId: bob }}, requestedModes }), new IdentifierMap());
   });
 
+  it('decides by the circumstances the request was made in.', async(): Promise<void> => {
+    const reader = createReader(duringHours, withPeriod);
+    credentials = { agent: { webId: alice }, environment: { timestamp: businessHours }};
+    compareMaps(
+      await reader.handle({ credentials, requestedModes }),
+      new IdentifierMap([[ target, { [AccessMode.read]: true }]]),
+    );
+    credentials = { agent: { webId: alice }, environment: { timestamp: outOfHours }};
+    compareMaps(await reader.handle({ credentials, requestedModes }), new IdentifierMap());
+  });
+
+  it('falls back to the declared default when nothing recorded the circumstances.', async(): Promise<void> => {
+    const result = await createReader(duringHours, withPeriod).handle({ credentials, requestedModes });
+    compareMaps(result, new IdentifierMap());
+  });
+
   it('has no opinion when no rule matches the agent.', async(): Promise<void> => {
     const result = await createReader(nonMatching).handle({ credentials, requestedModes });
     compareMaps(result, new IdentifierMap());
@@ -134,7 +173,7 @@ describe('An AbacPermissionReader', (): void => {
       {},
     ];
 
-    for (const rules of [ matching, nonMatching, medical, new Store() ]) {
+    for (const rules of [ matching, nonMatching, medical, duringHours, new Store() ]) {
       for (const creds of credentialSets) {
         for (const id of targets) {
           const modes = new IdentifierSetMultiMap(allModes.map((mode): [any, any] => [ id, mode ])) as any;

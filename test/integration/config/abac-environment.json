@@ -1,0 +1,18 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": [
+        "Lets a test set the business-hours window, so it can place the moment of its requests inside or outside it.",
+        "The internal networks keep their shipped value, which counts the loopback address a test connects over."
+      ],
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:EnvironmentAttributeResolver" },
+      "overrideParameters": {
+        "@type": "EnvironmentAttributeResolver",
+        "businessHoursStart": { "@id": "urn:solid-server:custom:variable:businessHoursStart", "@type": "Variable" },
+        "businessHoursEnd": { "@id": "urn:solid-server:custom:variable:businessHoursEnd", "@type": "Variable" }
+      }
+    }
+  ]
+}
