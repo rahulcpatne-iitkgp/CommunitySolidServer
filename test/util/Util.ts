@@ -7,6 +7,7 @@ const portNames = [
   // Integration
   'AbacEnvironment',
   'AbacEnvironmentOutside',
+  'AbacOwnerVeto',
   'AbacResources',
   'AbacServer',
   'AbacStore',

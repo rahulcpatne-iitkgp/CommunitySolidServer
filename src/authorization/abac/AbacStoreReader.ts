@@ -30,7 +30,8 @@ const noPermissions: PermissionSet = Object.freeze({
  * Determines access to the ABAC store: only the administrator may write it,
  * while anyone may read the attribute definitions and rules.
  *
- * Unlike `AbacPermissionReader` it returns explicit `false`, as only that overrides what other readers grant.
+ * Unlike `AbacGrantReader`, which can only grant, it returns explicit `false`,
+ * as only that overrides what other readers grant.
  */
 export class AbacStoreReader extends PermissionReader {
   private readonly admin: string;

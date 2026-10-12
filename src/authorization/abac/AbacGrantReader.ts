@@ -4,36 +4,25 @@ import type { RequestEnvironment } from '../../authentication/EnvironmentCredent
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../../logging/LogUtil';
 import type { IdentifierStrategy } from '../../util/identifiers/IdentifierStrategy';
-import { IdentifierMap } from '../../util/map/IdentifierMap';
+import { IdentifierSetMultiMap } from '../../util/map/IdentifierMap';
 import { ensureTrailingSlash, trimTrailingSlashes } from '../../util/PathUtil';
-import { ABAC, ACL } from '../../util/Vocabularies';
+import { ABAC } from '../../util/Vocabularies';
+import type { GrantMap } from '../GrantReader';
+import { GrantReader } from '../GrantReader';
 import type { PermissionReaderInput } from '../PermissionReader';
-import { PermissionReader } from '../PermissionReader';
-import type { AclPermissionSet } from '../permissions/AclPermissionSet';
-import { AclMode } from '../permissions/AclPermissionSet';
-import { AccessMode } from '../permissions/Permissions';
-import type { PermissionMap } from '../permissions/Permissions';
 import type { AbacDataLoader } from './AbacDataLoader';
 import type { AttributeDefinition, AttributeVector } from './AbacTypes';
 import { buildAttributeVector, buildEnvironmentVector, getAttributeDefinitions, getRules } from './AbacUtil';
 import type { EnvironmentAttributeResolver } from './EnvironmentAttributeResolver';
 import { evaluateRules } from './RuleEvaluator';
 
-const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
-  [ACL.Read]: [ AccessMode.read ],
-  [ACL.Write]: [ AccessMode.append, AccessMode.write ],
-  [ACL.Append]: [ AccessMode.append ],
-  [ACL.Control]: [ AclMode.control ],
-} as const;
-
 /**
- * Grants access based on the attributes of the requesting agent, of each target resource in the ABAC store,
- * and of the circumstances of the request, matched against the rules of the global catalogue.
+ * Determines which access modes the rules of the global catalogue grant on each target,
+ * based on the attributes of the requesting agent, of the target in the ABAC store,
+ * and of the circumstances of the request.
  * A resource inherits the attribute values of its closest ancestor that assigns them.
- *
- * Never returns `false`, only `true` or nothing, so it can add access on top of WAC/ACP but never remove any.
  */
-export class AbacPermissionReader extends PermissionReader {
+export class AbacGrantReader extends GrantReader {
   protected readonly logger = getLoggerFor(this);
 
   private readonly loader: AbacDataLoader;
@@ -65,8 +54,8 @@ export class AbacPermissionReader extends PermissionReader {
     this.excludePaths = excludePaths.map((path): RegExp => new RegExp(path, 'u'));
   }
 
-  public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<PermissionMap> {
-    const result: PermissionMap = new IdentifierMap();
+  public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<GrantMap> {
+    const result: GrantMap = new IdentifierSetMultiMap();
 
     const webId = credentials.agent?.webId;
     if (!webId) {
@@ -107,9 +96,7 @@ export class AbacPermissionReader extends PermissionReader {
       this.logger.debug(
         `ABAC grants ${webId} [${[ ...modes ].join(', ')}] on ${target.path}: ${JSON.stringify(vector)}`,
       );
-      if (modes.size > 0) {
-        result.set(target, this.toPermissionSet(modes));
-      }
+      result.set(target, modes);
     }
     return result;
   }
@@ -153,18 +140,5 @@ export class AbacPermissionReader extends PermissionReader {
       ancestors.push(DataFactory.namedNode(identifier.path));
     }
     return ancestors;
-  }
-
-  /**
-   * Converts granted ACL modes into a permission set, leaving every other mode absent rather than `false`.
-   */
-  private toPermissionSet(modes: Set<string>): AclPermissionSet {
-    const permissions: AclPermissionSet = {};
-    for (const mode of modes) {
-      for (const permission of modesMap[mode] ?? []) {
-        permissions[permission] = true;
-      }
-    }
-    return permissions;
   }
 }
