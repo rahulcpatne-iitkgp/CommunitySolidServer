@@ -8,7 +8,7 @@
   ],
   "@graph": [
     {
-      "comment": "ACP authorization, with the grant-only ABAC layer added on top."
+      "comment": "ACP authorization, with ABAC grants that the denials in the ACRs override."
     }
   ]
 }

@@ -2,6 +2,7 @@ import { Parser } from 'n3';
 import type { Quad } from '@rdfjs/types';
 import type { Credentials } from '../../../src/authentication/Credentials';
 import { AcpReader } from '../../../src/authorization/AcpReader';
+import type { GrantReader } from '../../../src/authorization/GrantReader';
 import { AccessMode } from '../../../src/authorization/permissions/Permissions';
 import type { AuxiliaryStrategy } from '../../../src/http/auxiliary/AuxiliaryStrategy';
 import { BasicRepresentation } from '../../../src/http/representation/BasicRepresentation';
@@ -13,6 +14,7 @@ import type { IdentifierStrategy } from '../../../src/util/identifiers/Identifie
 import { SingleRootIdentifierStrategy } from '../../../src/util/identifiers/SingleRootIdentifierStrategy';
 import { IdentifierMap, IdentifierSetMultiMap } from '../../../src/util/map/IdentifierMap';
 import { joinUrl } from '../../../src/util/PathUtil';
+import { ACL } from '../../../src/util/Vocabularies';
 import { SimpleSuffixStrategy } from '../../util/SimpleSuffixStrategy';
 import { compareMaps } from '../../util/Util';
 
@@ -200,5 +202,62 @@ describe('An AcpReader', (): void => {
     };
     expectedPermissions = new IdentifierMap([[{ path: baseUrl }, { read: true }]]);
     compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
+  });
+
+  it('adds outside grants, other than Control, unless an applying policy denies that mode.', async(): Promise<void> => {
+    const alice = 'http://example.com/alice#me';
+    const target = { path: joinUrl(baseUrl, 'foo') };
+    credentials = { agent: { webId: alice }};
+    dataMap[baseUrl] = toQuads(`
+      []
+        acp:resource <./>;
+        acp:memberAccessControl [ acp:apply _:aliceDenied, _:bobDenied ].
+      _:aliceDenied
+        acp:deny acl:Read, acl:Append;
+        acp:allOf [ acp:agent <${alice}> ].
+      _:bobDenied
+        acp:deny acl:Write;
+        acp:allOf [ acp:agent <http://example.com/bob#me> ].
+    `, baseUrl);
+    const grantReader: jest.Mocked<GrantReader> = {
+      handleSafe: jest.fn().mockResolvedValue(new IdentifierSetMultiMap([
+        [{ path: baseUrl }, new Set([ ACL.Read, 'http://example.com/#Teleport', 'constructor' ]) ],
+        [ target, new Set([ ACL.Read, ACL.Write, ACL.Control ]) ],
+      ])),
+    } as any;
+    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, grantReader);
+    const requestedModes = new IdentifierSetMultiMap([
+      [{ path: baseUrl }, AccessMode.read ],
+      [ target, AccessMode.read ],
+    ]);
+    const expectedPermissions = new IdentifierMap([
+      [{ path: baseUrl }, { read: true }],
+      [ target, { append: true, write: true }],
+    ]);
+    compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
+    expect(grantReader.handleSafe).toHaveBeenLastCalledWith({ credentials, requestedModes });
+  });
+
+  it('ignores grants it cannot determine, but not ACRs it cannot read.', async(): Promise<void> => {
+    dataMap[baseUrl] = toQuads(`
+      []
+        acp:resource <./>;
+        acp:accessControl [ acp:apply _:policy ].
+      _:policy
+        acp:allow acl:Read;
+        acp:allOf _:matcher.
+      _:matcher acp:agent acp:PublicAgent.
+    `, baseUrl);
+    const grantReader: jest.Mocked<GrantReader> = {
+      handleSafe: jest.fn().mockRejectedValue(new Error('unreachable')),
+    } as any;
+    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, grantReader);
+    const requestedModes = new IdentifierSetMultiMap([[{ path: baseUrl }, AccessMode.read ]]);
+    const expectedPermissions = new IdentifierMap([[{ path: baseUrl }, { read: true }]]);
+    compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
+
+    grantReader.handleSafe.mockResolvedValueOnce(new IdentifierSetMultiMap([[{ path: baseUrl }, ACL.Write ]]));
+    acrStore.getRepresentation.mockRejectedValueOnce(new Error('bad request'));
+    await expect(acpReader.handle({ credentials, requestedModes })).rejects.toThrow('bad request');
   });
 });

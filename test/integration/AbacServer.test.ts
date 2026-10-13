@@ -101,11 +101,11 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     await expect(send(created, ALICE, 'DELETE')).resolves.toBe(205);
   });
 
-  it('gives access to an ACR only through Control, as ACP does.', async(): Promise<void> => {
+  it('never gives access to an ACR, not even through a rule granting Control.', async(): Promise<void> => {
     const acr = `${bobsResource}.acr`;
     await expect(send(acr, ALICE)).resolves.toBe(403);
     await expect(send(acr, ALICE, 'PUT', '<#policy> a <#Policy> .')).resolves.toBe(403);
-    await expect(send(acr, BOB)).resolves.toBe(200);
+    await expect(send(acr, BOB)).resolves.toBe(403);
   });
 
   it('cannot grant access to the server internals, whatever the rules say.', async(): Promise<void> => {

@@ -11,7 +11,7 @@ export * from './authentication/UnsecureWebIdExtractor';
 
 // Authorization/ABAC
 export * from './authorization/abac/AbacDataLoader';
-export * from './authorization/abac/AbacPermissionReader';
+export * from './authorization/abac/AbacGrantReader';
 export * from './authorization/abac/AbacStoreReader';
 export * from './authorization/abac/AbacTypes';
 export * from './authorization/abac/AbacUtil';
@@ -41,6 +41,7 @@ export * from './authorization/AcpUtil';
 export * from './authorization/AllStaticReader';
 export * from './authorization/Authorizer';
 export * from './authorization/AuxiliaryReader';
+export * from './authorization/GrantReader';
 export * from './authorization/OwnerPermissionReader';
 export * from './authorization/ParentContainerReader';
 export * from './authorization/PathBasedReader';

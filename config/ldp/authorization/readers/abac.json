@@ -3,11 +3,17 @@
   "@graph": [
     {
       "comment": [
-        "Grants access based on the attributes of the requesting agent, the target resource and the request itself.",
-        "Never returns `false`."
+        "Evaluates the ABAC grants as one more allow beside the policies of the ACRs, so a policy denying a mode overrides them.",
+        "Being part of ACP's verdict, they create and delete only through the parent container, and never reach an ACR, as they cannot grant Control."
       ],
-      "@id": "urn:solid-server:default:AbacPermissionReader",
-      "@type": "AbacPermissionReader",
+      "@id": "urn:solid-server:default:AcpReader",
+      "@type": "AcpReader",
+      "grantReader": { "@id": "urn:solid-server:default:AbacGrantReader" }
+    },
+    {
+      "comment": "Determines which modes the ABAC rules grant, from the attributes of the requesting agent, the target resource and the request itself.",
+      "@id": "urn:solid-server:default:AbacGrantReader",
+      "@type": "AbacGrantReader",
       "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
       "environmentResolver": {
         "comment": [
@@ -58,24 +64,6 @@
           }
         }
       ]
-    },
-    {
-      "comment": [
-        "Evaluates ABAC grants beside ACP, so they are interpreted the same way:",
-        "an ACR is only accessible through Control, and create and delete depend on the parent container."
-      ],
-      "@type": "Override",
-      "overrideInstance": { "@id": "urn:solid-server:default:AuthAuxiliaryReader" },
-      "overrideParameters": {
-        "@type": "AuthAuxiliaryReader",
-        "reader": {
-          "@type": "UnionPermissionReader",
-          "readers": [
-            { "@id": "urn:solid-server:default:AcpReader" },
-            { "@id": "urn:solid-server:default:AbacPermissionReader" }
-          ]
-        }
-      }
     }
   ]
 }
