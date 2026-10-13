@@ -80,8 +80,7 @@ export class AbacGrantReader extends GrantReader {
       definitions.filter(({ appliesTo }): boolean => appliesTo === ABAC.Environment),
       credentials.environment,
     );
-    const rules = [ ...getRules(ruleData) ];
-    this.reportUndefinedAttributes(rules, definitions);
+    const rules = this.getValidRules(getRules(ruleData), definitions);
 
     for (const target of requestedModes.distinctKeys()) {
       if (this.isExcluded(target)) {
@@ -103,17 +102,35 @@ export class AbacGrantReader extends GrantReader {
   }
 
   /**
-   * Warns about every rule naming an attribute without a valid definition, which never matches.
+   * The rules that can match, given the attribute definitions. Warns about each of the others.
    */
-  private reportUndefinedAttributes(rules: Rule[], definitions: AttributeDefinition[]): void {
-    const defined = new Set(definitions.map(({ iri }): string => iri));
-    for (const rule of rules) {
-      const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
-      const unknown = [ ...new Set(conditions.map(({ attribute }): string => attribute)) ]
-        .filter((attribute): boolean => !defined.has(attribute));
-      if (unknown.length > 0) {
-        this.logger.warn(`Rule ${rule.iri} never matches, as it names undefined attributes: ${unknown.join(', ')}`);
+  private getValidRules(rules: Iterable<Rule>, definitions: AttributeDefinition[]): Rule[] {
+    const defined = new Map(definitions.map((definition): [string, AttributeDefinition] =>
+      [ definition.iri, definition ]));
+    return [ ...rules ].filter((rule): boolean => {
+      const problem = this.findProblem(rule, defined);
+      if (problem) {
+        this.logger.warn(`Rule ${rule.iri} never matches, as it ${problem}`);
       }
+      return !problem;
+    });
+  }
+
+  /**
+   * Why the given rule can never match, if it cannot: it names an attribute without a valid definition,
+   * or a value outside its attribute's value space.
+   */
+  private findProblem(rule: Rule, defined: Map<string, AttributeDefinition>): string | undefined {
+    const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
+    const undefinedAttributes = new Set(conditions.map(({ attribute }): string => attribute)
+      .filter((attribute): boolean => !defined.has(attribute)));
+    if (undefinedAttributes.size > 0) {
+      return `names undefined attributes: ${[ ...undefinedAttributes ].join(', ')}`;
+    }
+    const foreignValues = new Set(conditions.flatMap(({ attribute, values }): string[] =>
+      values.filter((value): boolean => !defined.get(attribute)!.values.has(value))));
+    if (foreignValues.size > 0) {
+      return `names values outside their attributes' value spaces: ${[ ...foreignValues ].join(', ')}`;
     }
   }
 

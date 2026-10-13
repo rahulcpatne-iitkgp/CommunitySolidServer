@@ -82,7 +82,8 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     }
 
     await write(joinUrl(baseUrl, '.abac/definitions/role'), `
-      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`);
     await write(joinUrl(baseUrl, '.abac/subjects/doctors'), `
       <${ALICE}> ex:role ex:Doctor . <${CAROL}> ex:role ex:Doctor .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `

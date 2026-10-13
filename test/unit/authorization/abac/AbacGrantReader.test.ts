@@ -36,13 +36,15 @@ describe('An AbacGrantReader', (): void => {
     ${turtle}`));
   }
 
-  const definitions = parse(`
-    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .
-    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Uncategorised .
+  const role = `ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+    abac:value ex:None, ex:Doctor, ex:Surgeon ; abac:defaultValue ex:None .`;
+  const definitions = parse(`${role}
+    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+      abac:value ex:Uncategorised, ex:Medical, ex:Administrative ; abac:defaultValue ex:Uncategorised .
   `);
-  const withPeriod = parse(`
-    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .
-    abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ; abac:defaultValue abac:OutOfHours .
+  const withPeriod = parse(`${role}
+    abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+      abac:value abac:BusinessHours, abac:OutOfHours ; abac:defaultValue abac:OutOfHours .
   `);
   // Each also claims an attribute that describes the other kind of entity, which must be ignored.
   const subjects = parse(`<${alice}> ex:role ex:Doctor ; ex:category ex:Medical .`);
@@ -64,9 +66,11 @@ describe('An AbacGrantReader', (): void => {
     <#R004> a abac:Rule ; abac:grants acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ abac:period abac:BusinessHours ] .
   `);
-  const unlessSuspended = parse(`
+  const malformed = parse(`
     <#R005> a abac:Rule ; abac:grants acl:Write ;
       abac:allOf [ ex:role ex:Doctor ] ; abac:noneOf [ ex:status ex:Suspended ] .
+    <#R006> a abac:Rule ; abac:grants acl:Write ;
+      abac:allOf [ ex:role ex:Doctor ] ; abac:noneOf [ ex:category ex:Medical, ex:Psychiatric ] .
   `);
 
   const noGrants = new IdentifierSetMultiMap<string>();
@@ -148,12 +152,14 @@ describe('An AbacGrantReader', (): void => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
-  it('warns about a rule naming an undefined attribute, which grants nothing.', async(): Promise<void> => {
-    const result = await createReader(unlessSuspended).handle({ credentials, requestedModes });
+  it('warns about a rule naming an undefined attribute or value, which grants nothing.', async(): Promise<void> => {
+    const result = await createReader(malformed).handle({ credentials, requestedModes });
     compareMaps(result, noGrants);
     expect(logger.warn).toHaveBeenCalledWith(
       `Rule ${baseUrl}#R005 never matches, as it names undefined attributes: http://example.org/hospital#status`,
     );
+    expect(logger.warn).toHaveBeenCalledWith(`Rule ${baseUrl}#R006 never matches, as it names values ` +
+      `outside their attributes' value spaces: http://example.org/hospital#Psychiatric`);
   });
 
   it('has no opinion when no rule matches the agent.', async(): Promise<void> => {

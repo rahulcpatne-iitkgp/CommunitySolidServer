@@ -81,10 +81,12 @@ describe('An LDP handler with an ABAC rule over how an identity was proven', ():
     }
     await store.setRepresentation({ path: target }, new BasicRepresentation('patient note', 'text/plain'));
     await writeAbac('definitions/role', `
-      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`);
     await writeAbac('definitions/authMethod', `
-      abac:authMethod a abac:AttributeDefinition ;
-        abac:appliesTo abac:Environment ; abac:defaultValue abac:NoCredentials .`);
+      abac:authMethod a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+        abac:value abac:BoundToken, abac:BearerToken, abac:Unsecure, abac:NoCredentials ;
+        abac:defaultValue abac:NoCredentials .`);
     await writeAbac('subjects/alice', `<${webId}> ex:role ex:Doctor .`);
     await writeAbac('rules/R001', `
       <#R001> a abac:Rule ; abac:grants acl:Read ;

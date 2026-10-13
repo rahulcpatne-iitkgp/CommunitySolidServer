@@ -64,7 +64,8 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     }));
 
     await write(joinUrl(baseUrl, '.abac/definitions/role'), `${prefixes}
-      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor, ex:Nurse ; abac:defaultValue ex:None .`);
     await write(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), `${prefixes}
       <${ALICE}> ex:role ex:Doctor .`);
     await write(joinUrl(baseUrl, '.abac/subjects/bob.example/profile/card'), `${prefixes}

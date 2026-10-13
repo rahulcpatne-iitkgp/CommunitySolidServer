@@ -108,6 +108,7 @@ export const ABAC = createVocabulary(
   // Attribute definitions
   'appliesTo',
   'defaultValue',
+  'value',
   'AttributeDefinition',
   'Environment',
   'Resource',

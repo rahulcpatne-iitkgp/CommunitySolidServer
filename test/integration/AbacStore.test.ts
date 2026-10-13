@@ -72,7 +72,8 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
   it('lets the administrator create every part of the store from nothing.', async(): Promise<void> => {
     await expect(send(abac, ADMIN)).resolves.toBe(404);
     const documents = {
-      [definition]: 'ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .',
+      [definition]: `ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`,
       [subject]: `<${ALICE}> ex:role ex:Doctor .`,
       [resource]: `<${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`,
       [rule]: '<#R001> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Doctor ] .',
