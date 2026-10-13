@@ -6,12 +6,22 @@ import { EnvironmentAttributeResolver } from '../../../../src/authorization/abac
 import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
 import { AccessMode } from '../../../../src/authorization/permissions/Permissions';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
+import type { Logger } from '../../../../src/logging/Logger';
+import { getLoggerFor } from '../../../../src/logging/LogUtil';
+import type { IdentifierStrategy } from '../../../../src/util/identifiers/IdentifierStrategy';
 import { SingleRootIdentifierStrategy } from '../../../../src/util/identifiers/SingleRootIdentifierStrategy';
+import { SubdomainIdentifierStrategy } from '../../../../src/util/identifiers/SubdomainIdentifierStrategy';
 import { IdentifierSetMultiMap } from '../../../../src/util/map/IdentifierMap';
 import { ACL } from '../../../../src/util/Vocabularies';
 import { compareMaps } from '../../../util/Util';
 
+jest.mock('../../../../src/logging/LogUtil', (): any => {
+  const logger: Logger = { debug: jest.fn(), warn: jest.fn() } as any;
+  return { getLoggerFor: (): Logger => logger };
+});
+
 describe('An AbacGrantReader', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('AbacGrantReader') as any;
   const baseUrl = 'http://example.com/';
   const alice = 'http://example.com/alice/profile/card#me';
   const bob = 'http://example.com/bob/profile/card#me';
@@ -54,6 +64,10 @@ describe('An AbacGrantReader', (): void => {
     <#R004> a abac:Rule ; abac:grants acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ abac:period abac:BusinessHours ] .
   `);
+  const unlessSuspended = parse(`
+    <#R005> a abac:Rule ; abac:grants acl:Write ;
+      abac:allOf [ ex:role ex:Doctor ] ; abac:noneOf [ ex:status ex:Suspended ] .
+  `);
 
   const noGrants = new IdentifierSetMultiMap<string>();
   const businessHours = new Date('2026-10-07T10:00:00');
@@ -65,7 +79,7 @@ describe('An AbacGrantReader', (): void => {
   function createReader(
     rules: Store,
     definitionData = definitions,
-    excludePaths = [ '^$', '^/\\..*' ],
+    identifierStrategy: IdentifierStrategy = new SingleRootIdentifierStrategy(baseUrl),
   ): AbacGrantReader {
     const loader = {
       readDefinitions: jest.fn().mockResolvedValue(definitionData),
@@ -74,13 +88,7 @@ describe('An AbacGrantReader', (): void => {
       readRules: jest.fn().mockResolvedValue(rules),
     } satisfies Partial<AbacDataLoader> as any;
     const resolver = new EnvironmentAttributeResolver('09:00', '17:00', [ '^127\\.' ]);
-    return new AbacGrantReader(
-      loader,
-      new SingleRootIdentifierStrategy(baseUrl),
-      resolver,
-      baseUrl,
-      excludePaths,
-    );
+    return new AbacGrantReader(loader, identifierStrategy, resolver, baseUrl, [ '^/\\..*' ]);
   }
 
   function readRequest(...paths: string[]): AccessMap {
@@ -89,6 +97,7 @@ describe('An AbacGrantReader', (): void => {
   }
 
   beforeEach((): void => {
+    jest.clearAllMocks();
     credentials = { agent: { webId: alice }};
     requestedModes = new IdentifierSetMultiMap([[ target, AccessMode.read ]]) as any;
   });
@@ -131,9 +140,20 @@ describe('An AbacGrantReader', (): void => {
     compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
   });
 
-  it('falls back to the declared default when nothing recorded the circumstances.', async(): Promise<void> => {
-    const result = await createReader(duringHours, withPeriod).handle({ credentials, requestedModes });
+  it('falls back to the declared default without a valid record of the circumstances.', async(): Promise<void> => {
+    const reader = createReader(duringHours, withPeriod);
+    compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
+    credentials = { agent: { webId: alice }, environment: { timestamp: businessHours.toISOString() }};
+    compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('warns about a rule naming an undefined attribute, which grants nothing.', async(): Promise<void> => {
+    const result = await createReader(unlessSuspended).handle({ credentials, requestedModes });
     compareMaps(result, noGrants);
+    expect(logger.warn).toHaveBeenCalledWith(
+      `Rule ${baseUrl}#R005 never matches, as it names undefined attributes: http://example.org/hospital#status`,
+    );
   });
 
   it('has no opinion when no rule matches the agent.', async(): Promise<void> => {
@@ -155,5 +175,16 @@ describe('An AbacGrantReader', (): void => {
     ) as any;
     const result = await createReader(matching).handle({ credentials, requestedModes });
     compareMaps(result, noGrants);
+  });
+
+  it('grants on a pod on a subdomain, but not on the server namespaces.', async(): Promise<void> => {
+    const pod = { path: 'http://alice.example.com/records/note.ttl' };
+    const internal = { path: `${baseUrl}.internal/foo` };
+    requestedModes = new IdentifierSetMultiMap([[ pod, AccessMode.read ], [ internal, AccessMode.read ]]) as any;
+    const reader = createReader(matching, definitions, new SubdomainIdentifierStrategy(baseUrl));
+    compareMaps(
+      await reader.handle({ credentials, requestedModes }),
+      new IdentifierSetMultiMap([[ pod, new Set([ ACL.Read, ACL.Write, ACL.Control ]) ]]),
+    );
   });
 });

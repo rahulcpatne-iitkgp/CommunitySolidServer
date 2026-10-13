@@ -4,16 +4,25 @@ import type { AttributeCondition, AttributeVector, Rule } from './AbacTypes';
  * Whether the vector's value for the condition's attribute is one of the listed values.
  */
 function satisfies(condition: AttributeCondition, vector: AttributeVector): boolean {
-  const value = vector[condition.attribute];
-  return typeof value === 'string' && condition.values.includes(value);
+  return condition.values.includes(vector[condition.attribute]);
+}
+
+/**
+ * Whether the vector has a value for the condition's attribute.
+ */
+function isValued(condition: AttributeCondition, vector: AttributeVector): boolean {
+  return typeof vector[condition.attribute] === 'string';
 }
 
 /**
  * Whether the rule's conditions hold for the given attribute vector.
  * A rule without any conditions never matches, so an empty rule cannot grant everything.
+ * Neither does a rule with a condition on an attribute the vector has no value for,
+ * so a `noneOf` condition naming an undefined attribute cannot hold for everyone.
  */
 function matches(rule: Rule, vector: AttributeVector): boolean {
-  if (rule.allOf.length + rule.anyOf.length + rule.noneOf.length === 0) {
+  const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
+  if (conditions.length === 0 || !conditions.every((condition): boolean => isValued(condition, vector))) {
     return false;
   }
   return rule.allOf.every((condition): boolean => satisfies(condition, vector)) &&

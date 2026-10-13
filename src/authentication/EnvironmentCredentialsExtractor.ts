@@ -18,6 +18,16 @@ export interface RequestEnvironment {
 }
 
 /**
+ * Whether the given value is a {@link RequestEnvironment}.
+ */
+export function isRequestEnvironment(value: unknown): value is RequestEnvironment {
+  const environment = value as Partial<RequestEnvironment> | undefined;
+  return environment?.timestamp instanceof Date &&
+    (environment.ip === undefined || typeof environment.ip === 'string') &&
+    (environment.authScheme === undefined || schemes.includes(environment.authScheme));
+}
+
+/**
  * Records the circumstances of a request in `credentials.environment`,
  * so authorization can take them into account.
  *

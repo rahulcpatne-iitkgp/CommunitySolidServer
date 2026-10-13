@@ -1,4 +1,7 @@
-import { EnvironmentCredentialsExtractor } from '../../../src/authentication/EnvironmentCredentialsExtractor';
+import {
+  EnvironmentCredentialsExtractor,
+  isRequestEnvironment,
+} from '../../../src/authentication/EnvironmentCredentialsExtractor';
 import type { RequestEnvironment } from '../../../src/authentication/EnvironmentCredentialsExtractor';
 import type { HttpRequest } from '../../../src/server/HttpRequest';
 
@@ -32,5 +35,14 @@ describe('An EnvironmentCredentialsExtractor', (): void => {
     const { timestamp } = await extract();
     expect(timestamp.getTime()).toBeGreaterThanOrEqual(before);
     expect(timestamp.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('records what isRequestEnvironment recognises, and nothing else passes it.', async(): Promise<void> => {
+    expect(isRequestEnvironment(await extract('DPoP token', '::1'))).toBe(true);
+    expect(isRequestEnvironment(await extract())).toBe(true);
+    expect(isRequestEnvironment(undefined)).toBe(false);
+    expect(isRequestEnvironment({ timestamp: '2026-10-07T10:00:00' })).toBe(false);
+    expect(isRequestEnvironment({ timestamp: new Date(), ip: 1 })).toBe(false);
+    expect(isRequestEnvironment({ timestamp: new Date(), authScheme: 'Basic' })).toBe(false);
   });
 });

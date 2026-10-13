@@ -1,8 +1,13 @@
 import { DataFactory } from 'n3';
 import type { Store } from 'n3';
 import type { NamedNode, Term } from '@rdfjs/types';
+import { getLoggerFor } from '../../logging/LogUtil';
 import { ABAC, RDF } from '../../util/Vocabularies';
 import type { AttributeCondition, AttributeDefinition, AttributeVector, Rule } from './AbacTypes';
+
+const logger = getLoggerFor('AbacUtil');
+
+const entityKinds: ReadonlySet<string> = new Set([ ABAC.Subject, ABAC.Resource, ABAC.Environment ]);
 
 /**
  * Returns the string values of all objects found using the given subject and predicate.
@@ -12,28 +17,23 @@ function getObjectValues(data: Store, subject: Term, predicate: NamedNode): stri
 }
 
 /**
- * Returns the string value of the first object found using the given subject and predicate.
- */
-function getObjectValue(data: Store, subject: Term, predicate: NamedNode): string | undefined {
-  return getObjectValues(data, subject, predicate)[0];
-}
-
-/**
- * Finds all {@link AttributeDefinition} in the given dataset, skipping any without a `defaultValue`.
+ * Finds all {@link AttributeDefinition} in the given dataset.
+ * A definition needs a single `appliesTo` naming the kind of entity it describes, and a single `defaultValue`.
+ * Any other is skipped with a warning: it is unclear what it describes, or what an unassigned entity resolves to.
  *
  * @param data - Dataset to look in.
  */
 export function* getAttributeDefinitions(data: Store): Iterable<AttributeDefinition> {
   for (const quad of data.getQuads(null, RDF.terms.type, ABAC.terms.AttributeDefinition, null)) {
-    const defaultValue = getObjectValue(data, quad.subject, ABAC.terms.defaultValue);
-    if (!defaultValue) {
+    const appliesTo = getObjectValues(data, quad.subject, ABAC.terms.appliesTo);
+    const defaultValue = getObjectValues(data, quad.subject, ABAC.terms.defaultValue);
+    if (appliesTo.length !== 1 || !entityKinds.has(appliesTo[0]) || defaultValue.length !== 1) {
+      logger.warn(`Skipping attribute definition ${quad.subject.value}, which needs one abac:appliesTo ` +
+        `naming a Subject, Resource or Environment, and one abac:defaultValue. ` +
+        `Found appliesTo [${appliesTo.join(', ')}] and defaultValue [${defaultValue.join(', ')}].`);
       continue;
     }
-    yield {
-      iri: quad.subject.value,
-      appliesTo: getObjectValue(data, quad.subject, ABAC.terms.appliesTo) ?? ABAC.Subject,
-      defaultValue,
-    };
+    yield { iri: quad.subject.value, appliesTo: appliesTo[0], defaultValue: defaultValue[0] };
   }
 }
 
@@ -81,6 +81,8 @@ export function* getRules(data: Store): Iterable<Rule> {
 /**
  * Builds the attribute vector of an entity, taking each value from the first of the given entities
  * that assigns it, and falling back to each definition's default.
+ * If that entity assigns an attribute several values, the attribute is left out with a warning,
+ * so no rule naming it matches: attributes are single-valued, and picking one would be arbitrary.
  *
  * @param definitions - Definitions of every attribute the vector should cover.
  * @param assignments - Dataset holding the assignments, keyed by the entity as RDF subject.
@@ -94,8 +96,13 @@ export function buildAttributeVector(
   const vector: AttributeVector = {};
   for (const definition of definitions) {
     const attribute = DataFactory.namedNode(definition.iri);
-    const assigned = entities.flatMap((entity): Term[] => assignments.getObjects(entity, attribute, null))[0];
-    vector[definition.iri] = assigned?.value ?? definition.defaultValue;
+    const entity = entities.find((candidate): boolean => assignments.countQuads(candidate, attribute, null, null) > 0);
+    const values = entity ? getObjectValues(assignments, entity, attribute) : [ definition.defaultValue ];
+    if (values.length > 1) {
+      logger.warn(`${entity!.value} assigns ${definition.iri} several values, so none applies: ${values.join(', ')}`);
+      continue;
+    }
+    vector[definition.iri] = values[0];
   }
   return vector;
 }

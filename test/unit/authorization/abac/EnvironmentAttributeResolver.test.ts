@@ -68,5 +68,7 @@ describe('An EnvironmentAttributeResolver', (): void => {
   it('rejects a window it cannot parse.', (): void => {
     expect((): unknown => new EnvironmentAttributeResolver('9am', '17:00', []))
       .toThrow('Invalid time of day 9am, expected HH:MM.');
+    expect((): unknown => new EnvironmentAttributeResolver('09:00', '24:00', [])).toThrow('Invalid time of day 24:00');
+    expect((): unknown => new EnvironmentAttributeResolver('09:60', '17:00', [])).toThrow('Invalid time of day 09:60');
   });
 });

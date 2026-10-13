@@ -49,8 +49,15 @@ describe('A RuleEvaluator', (): void => {
     expect(evaluateRules([ rule(`${ex}R007`, [ `${acl}Read` ]) ], vector)).toEqual(new Set());
   });
 
-  it('does not satisfy a condition on an attribute the vector does not cover.', (): void => {
-    const unknown = [ rule(`${ex}R008`, [ `${acl}Read` ], { allOf: [ condition('clearance', 'High') ]}) ];
+  it('does not match a rule naming an attribute the vector does not cover.', (): void => {
+    const unknown = [
+      rule(`${ex}R008`, [ `${acl}Read` ], { allOf: [ condition('clearance', 'High') ]}),
+      rule(`${ex}R009`, [ `${acl}Write` ], { anyOf: [ condition('role', 'Doctor'), condition('clearance', 'High') ]}),
+      rule(`${ex}R010`, [ `${acl}Append` ], {
+        allOf: [ condition('role', 'Doctor') ],
+        noneOf: [ condition('clearance', 'Revoked') ],
+      }),
+    ];
     expect(evaluateRules(unknown, vector)).toEqual(new Set());
   });
 

@@ -6,10 +6,18 @@ import {
   getAttributeDefinitions,
   getRules,
 } from '../../../../src/authorization/abac/AbacUtil';
+import type { Logger } from '../../../../src/logging/Logger';
+import { getLoggerFor } from '../../../../src/logging/LogUtil';
 import { ABAC } from '../../../../src/util/Vocabularies';
 import namedNode = DataFactory.namedNode;
 
+jest.mock('../../../../src/logging/LogUtil', (): any => {
+  const logger: Logger = { warn: jest.fn() } as any;
+  return { getLoggerFor: (): Logger => logger };
+});
+
 describe('AbacUtil', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('AbacUtil') as any;
   const baseUrl = 'http://example.com/';
   const alice = `${baseUrl}alice/profile/card#me`;
   const ex = 'http://example.org/hospital#';
@@ -23,13 +31,16 @@ describe('AbacUtil', (): void => {
     ${turtle}`));
   }
 
-  // `department` declares no appliesTo, `category` a non-subject one, and `broken` no default.
   const definitions = parse(`
     ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .
-    ex:department a abac:AttributeDefinition ; abac:defaultValue ex:Unknown .
+    ex:department a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:Unknown .
     ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Any .
-    ex:broken a abac:AttributeDefinition ; abac:appliesTo abac:Subject .
+    ex:unscoped a abac:AttributeDefinition ; abac:defaultValue ex:Any .
+    ex:misscoped a abac:AttributeDefinition ; abac:appliesTo abac:Subjects ; abac:defaultValue ex:Any .
+    ex:undefaulted a abac:AttributeDefinition ; abac:appliesTo abac:Subject .
+    ex:ambiguous a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:A, ex:B .
   `);
+  const defined = [ ...getAttributeDefinitions(definitions) ];
 
   const rules = parse(`
     <#R001> a abac:Rule ;
@@ -40,13 +51,21 @@ describe('AbacUtil', (): void => {
     <#R002> a abac:Rule ; abac:grants acl:Read .
   `);
 
+  beforeEach((): void => {
+    jest.clearAllMocks();
+  });
+
   describe('#getAttributeDefinitions', (): void => {
-    it('returns every definition that declares a default value.', (): void => {
+    it('returns every definition with one known kind of entity and one default.', (): void => {
       expect([ ...getAttributeDefinitions(definitions) ]).toEqual([
         { iri: `${ex}role`, appliesTo: ABAC.Subject, defaultValue: `${ex}None` },
         { iri: `${ex}department`, appliesTo: ABAC.Subject, defaultValue: `${ex}Unknown` },
         { iri: `${ex}category`, appliesTo: ABAC.Resource, defaultValue: `${ex}Any` },
       ]);
+      expect(logger.warn).toHaveBeenCalledTimes(4);
+      expect(logger.warn).toHaveBeenLastCalledWith(expect.stringContaining(
+        `Skipping attribute definition ${ex}ambiguous`,
+      ));
     });
 
     it('returns nothing if no data is found.', (): void => {
@@ -83,7 +102,9 @@ describe('AbacUtil', (): void => {
   });
 
   describe('#buildAttributeVector', (): void => {
-    const defined = [ ...getAttributeDefinitions(definitions) ];
+    const records = `${baseUrl}records/`;
+    const note = `${records}2026/note.ttl`;
+    const entities = [ note, `${records}2026/`, records, baseUrl ].map((entity): NamedNode => namedNode(entity));
 
     it('uses the assigned value where there is one, the default otherwise.', (): void => {
       const assignments = parse(`<${alice}> ex:role ex:Doctor ; ex:clearance ex:High .`);
@@ -103,24 +124,33 @@ describe('AbacUtil', (): void => {
     });
 
     it('takes each value from the most specific entity that assigns it.', (): void => {
-      const records = `${baseUrl}records/`;
-      const note = `${records}2026/note.ttl`;
       const assignments = parse(`
         <${records}> ex:category ex:Medical ; ex:department ex:Cardiology .
         <${note}> ex:department ex:Emergency .
       `);
-      const entities = [ note, `${records}2026/`, records, baseUrl ].map((entity): NamedNode => namedNode(entity));
       expect(buildAttributeVector(defined, assignments, entities)).toEqual({
         [`${ex}role`]: `${ex}None`,
         [`${ex}department`]: `${ex}Emergency`,
         [`${ex}category`]: `${ex}Medical`,
       });
     });
+
+    it('leaves out an attribute that is assigned several values.', (): void => {
+      const assignments = parse(`
+        <${records}> ex:department ex:Cardiology .
+        <${note}> ex:department ex:Emergency, ex:Oncology .
+      `);
+      expect(buildAttributeVector(defined, assignments, entities)).toEqual({
+        [`${ex}role`]: `${ex}None`,
+        [`${ex}category`]: `${ex}Any`,
+      });
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining(`${note} assigns ${ex}department several values`),
+      );
+    });
   });
 
   describe('#buildEnvironmentVector', (): void => {
-    const defined = [ ...getAttributeDefinitions(definitions) ];
-
     it('uses the resolved value where there is one, the default otherwise.', (): void => {
       expect(buildEnvironmentVector(defined, { [`${ex}role`]: `${ex}Doctor` })).toEqual({
         [`${ex}role`]: `${ex}Doctor`,

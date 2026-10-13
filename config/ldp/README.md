@@ -16,6 +16,8 @@ Covers how agents are identified.
 
 Covers how operations are authorized (or rejected).
 
+* *abac*: Use Access Control Policy, with additional grants from attribute-based rules
+  that the denials in the policies override. Requires the `--abacAdmin` CLI option.
 * *acp*: Use Access Control Policy.
 * *allow-all*: No authorization, everything is allowed.
 * *webacl*: Use Web Access Control.
