@@ -52,7 +52,7 @@
         {
           "PathBasedReader:_paths_key": "^/\\.abac(/.*)?$",
           "PathBasedReader:_paths_value": {
-            "comment": "Only the ABAC administrator may write the store, while anyone may read its definitions and rules. Returns explicit `false`.",
+            "comment": "Only the ABAC administrator may write the store, while anyone may read its definitions and rules, and a pod owner the labels on their pod. Returns explicit `false`.",
             "@id": "urn:solid-server:default:AbacStoreReader",
             "@type": "AbacStoreReader",
             "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
@@ -60,6 +60,8 @@
               "@id": "urn:solid-server:custom:variable:abacAdmin",
               "@type": "Variable"
             },
+            "podStore": { "@id": "urn:solid-server:default:PodStore" },
+            "storageStrategy": { "@id": "urn:solid-server:default:StorageLocationStrategy" },
             "container": ".abac/"
           }
         }

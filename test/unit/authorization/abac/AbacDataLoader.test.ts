@@ -7,8 +7,15 @@ import type { ResourceIdentifier } from '../../../../src/http/representation/Res
 import type { ResourceStore } from '../../../../src/storage/ResourceStore';
 import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
 import { NotFoundHttpError } from '../../../../src/util/errors/NotFoundHttpError';
+import type { Logger } from '../../../../src/logging/Logger';
+import { getLoggerFor } from '../../../../src/logging/LogUtil';
 import { guardedStreamFrom } from '../../../../src/util/StreamUtil';
 import { LDP } from '../../../../src/util/Vocabularies';
+
+jest.mock('../../../../src/logging/LogUtil', (): any => {
+  const logger: Logger = { debug: jest.fn(), warn: jest.fn(), error: jest.fn() } as any;
+  return { getLoggerFor: (): Logger => logger };
+});
 
 const baseUrl = 'http://example.com/';
 
@@ -41,6 +48,7 @@ function document(path: string, quads: Quad[]): Representation {
 }
 
 describe('An AbacDataLoader', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('AbacDataLoader') as any;
   const definitions = `${baseUrl}.abac/definitions/`;
   const subjects = `${baseUrl}.abac/subjects/`;
   const resourceAttributes = `${baseUrl}.abac/resources/`;
@@ -51,6 +59,7 @@ describe('An AbacDataLoader', (): void => {
   let loader: AbacDataLoader;
 
   beforeEach((): void => {
+    jest.clearAllMocks();
     resources = {};
     store = {
       getRepresentation: jest.fn(async(identifier: ResourceIdentifier): Promise<Representation> => {
@@ -86,8 +95,10 @@ describe('An AbacDataLoader', (): void => {
     resources[`${profile}card`] = document(`${profile}card`, parse(
       `<https://alice.example/profile/card#me> ex:role ex:Doctor .`,
     ));
-    const records = `${resourceAttributes}records/`;
-    resources[resourceAttributes] = container(resourceAttributes, [ records ]);
+    const server = `${resourceAttributes}example.com/`;
+    const records = `${server}records/`;
+    resources[resourceAttributes] = container(resourceAttributes, [ server ]);
+    resources[server] = container(server, [ records ]);
     resources[records] = container(records, [ `${records}2026` ]);
     resources[`${records}2026`] = document(`${records}2026`, parse(
       `<${baseUrl}records/2026/> ex:category ex:Medical ; ex:sensitivity ex:Internal .`,
@@ -95,6 +106,23 @@ describe('An AbacDataLoader', (): void => {
 
     await expect(loader.readSubjectAttributes()).resolves.toEqual(expect.objectContaining({ size: 1 }));
     await expect(loader.readResourceAttributes()).resolves.toEqual(expect.objectContaining({ size: 2 }));
+  });
+
+  it('only takes a resource assignment about what its document mirrors.', async(): Promise<void> => {
+    const records = `${resourceAttributes}example.com/records`;
+    resources[resourceAttributes] = container(resourceAttributes, [ `${resourceAttributes}example.com/` ]);
+    resources[`${resourceAttributes}example.com/`] = container(`${resourceAttributes}example.com/`, [ records ]);
+    resources[records] = document(records, parse(`
+      <${baseUrl}records> ex:category ex:Medical .
+      <${baseUrl}records/> ex:category ex:Medical .
+      <${baseUrl}records/admin/> ex:category ex:Administrative .
+      <${baseUrl}records-2026/> ex:category ex:Medical .
+      <${baseUrl}bob/records/> ex:category ex:Medical .
+    `));
+
+    await expect(loader.readResourceAttributes()).resolves.toEqual(expect.objectContaining({ size: 3 }));
+    expect(logger.warn).toHaveBeenCalledWith(`Ignoring the assignments in ${records} about ${baseUrl}records-2026/, ` +
+      `${baseUrl}bob/records/, as it only labels ${baseUrl}records and what lies beneath it`);
   });
 
   it('treats a missing container as empty, so it works before the store exists.', async(): Promise<void> => {

@@ -69,7 +69,7 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
         abac:value ex:Uncategorised, ex:Medical, ex:Administrative ; abac:defaultValue ex:Uncategorised .`);
     await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor ; ex:category ex:Medical .`);
     await writeAbac('subjects/bob.example/profile/card', `<${BOB}> ex:role ex:Nurse .`);
-    await writeAbac('resources/records', `
+    await writeAbac('resources/localhost/records', `
       <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical ; ex:role ex:Doctor .
       <${joinUrl(baseUrl, 'records/admin/')}> ex:category ex:Administrative .`);
     await writeAbac('rules/R001', `

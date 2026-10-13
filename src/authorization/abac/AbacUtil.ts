@@ -2,6 +2,7 @@ import { DataFactory } from 'n3';
 import type { Store } from 'n3';
 import type { NamedNode, Term } from '@rdfjs/types';
 import { getLoggerFor } from '../../logging/LogUtil';
+import { ensureTrailingSlash } from '../../util/PathUtil';
 import { ABAC, RDF } from '../../util/Vocabularies';
 import type { AttributeCondition, AttributeDefinition, AttributeVector, Rule } from './AbacTypes';
 
@@ -115,6 +116,33 @@ export function buildAttributeVector(
     vector[definition.iri] = values[0];
   }
   return vector;
+}
+
+/**
+ * The resource that a document or container in the `resources/` subtree of the ABAC store labels.
+ * The subtree mirrors the host name and path of what it labels, taking the scheme and port from the store,
+ * which every resource of the server shares, pods on subdomains included:
+ * `resources/example.org/records/` labels `https://example.org:8443/records/` on a server at that port.
+ * Leaving the port out keeps a colon out of the path, which storage backends encode inconsistently.
+ * Undefined for the subtree itself, and anything outside it.
+ *
+ * @param path - Path of the document or container.
+ * @param resourcesContainer - URL of the `resources/` subtree.
+ */
+export function getMirroredResource(path: string, resourcesContainer: string): string | undefined {
+  if (path.startsWith(resourcesContainer) && path.length > resourcesContainer.length) {
+    const { protocol, port } = new URL(resourcesContainer);
+    const [ host, ...rest ] = path.slice(resourcesContainer.length).split('/');
+    return `${protocol}//${[ port ? `${host}:${port}` : host, ...rest ].join('/')}`;
+  }
+}
+
+/**
+ * Whether the given resource is the given scope or lies beneath it,
+ * so `records/` and `records/2026/` are within `records`, but `records-2026/` is not.
+ */
+export function isWithin(resource: string, scope: string): boolean {
+  return resource === scope || resource.startsWith(ensureTrailingSlash(scope));
 }
 
 /**

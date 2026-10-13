@@ -70,7 +70,7 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
       ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
         abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
     // The whole server is labelled medical, its own namespaces included, so only the exclusions keep rules from them.
-    await write(joinUrl(baseUrl, `.abac/resources/localhost:${port}`), `${prefixes}
+    await write(joinUrl(baseUrl, '.abac/resources/localhost'), `${prefixes}
       <${baseUrl}> ex:category ex:Medical .`);
     await write(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), `${prefixes}
       <${ALICE}> ex:role ex:Doctor .`);

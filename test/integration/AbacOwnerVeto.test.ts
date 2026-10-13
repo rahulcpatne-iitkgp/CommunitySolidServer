@@ -25,6 +25,13 @@ const prefixes = `
 const record = '<> a <#Record> .';
 
 /**
+ * The document in the ABAC store that labels the pod with the given name.
+ */
+function labels(podName: string): string {
+  return joinUrl(baseUrl, `.abac/resources/localhost/${podName}`);
+}
+
+/**
  * Sends a request as the given agent, using the debug WebID authorization header, and returns its status.
  */
 async function send(url: string, webId?: string, method = 'GET', turtle?: string): Promise<number> {
@@ -43,6 +50,8 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
   let pod: string;
   let records: string;
   let note: string;
+  let neighbour: string;
+  let neighbourNote: string;
 
   /**
    * A matcher for the given agent, or for everyone.
@@ -77,7 +86,11 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     ({ pod, webId: owner } = await register(baseUrl, user));
     records = joinUrl(pod, 'records/');
     note = joinUrl(records, 'note.ttl');
-    for (const path of [ note, joinUrl(records, 'other.ttl'), joinUrl(pod, 'shared.ttl') ]) {
+    let neighbourPod: string;
+    const other = { ...user, email: 'neighbour@example.com', podName: 'neighbour' };
+    ({ pod: neighbourPod, webId: neighbour } = await register(baseUrl, other));
+    neighbourNote = joinUrl(neighbourPod, 'records/note.ttl');
+    for (const path of [ note, joinUrl(records, 'other.ttl'), joinUrl(pod, 'shared.ttl'), neighbourNote ]) {
       await write(path, record);
     }
 
@@ -89,7 +102,12 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
         abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
     await write(joinUrl(baseUrl, '.abac/subjects/doctors'), `
       <${ALICE}> ex:role ex:Doctor . <${CAROL}> ex:role ex:Doctor .`);
-    await write(joinUrl(baseUrl, `.abac/resources/localhost:${port}/owner`), `<${pod}> ex:category ex:Medical .`);
+    // The owner's labels also claim the neighbour's records, which a document mirroring the owner's pod cannot label.
+    await send(labels('owner'), ADMIN, 'PUT', `${prefixes}
+      <${pod}> ex:category ex:Medical .
+      <${joinUrl(neighbourPod, 'records/')}> ex:category ex:Medical .`);
+    await send(labels('neighbour'), ADMIN, 'PUT', `${prefixes}
+      <${neighbourPod}> ex:category ex:Uncategorised .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `
       <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write, acl:Control ;
         abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
@@ -143,6 +161,20 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
 
     await expect(send(shared, BOB)).resolves.toBe(200);
     await expect(send(shared, ALICE)).resolves.toBe(200);
+  });
+
+  it('lets an owner read the labels on their own pod, and on no other.', async(): Promise<void> => {
+    await expect(send(labels('owner'), owner)).resolves.toBe(200);
+    await expect(send(labels('owner'), owner, 'PUT', record)).resolves.toBe(403);
+    await expect(send(labels('neighbour'), owner)).resolves.toBe(403);
+    await expect(send(labels('neighbour'), neighbour)).resolves.toBe(200);
+    await expect(send(joinUrl(baseUrl, '.abac/resources/localhost/'), owner)).resolves.toBe(403);
+    await expect(send(labels('owner'), ALICE)).resolves.toBe(403);
+    await expect(send(labels('owner'))).resolves.toBe(401);
+  });
+
+  it('ignores a label filed under one pod about a resource in another.', async(): Promise<void> => {
+    await expect(send(neighbourNote, ALICE)).resolves.toBe(403);
   });
 
   it('leaves the owner their own ACR, even when they deny themselves.', async(): Promise<void> => {

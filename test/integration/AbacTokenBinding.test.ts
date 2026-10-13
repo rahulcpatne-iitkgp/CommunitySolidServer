@@ -91,7 +91,7 @@ describe('An LDP handler with an ABAC rule over how an identity was proven', ():
         abac:value abac:BoundToken, abac:BearerToken, abac:Unsecure, abac:NoCredentials ;
         abac:defaultValue abac:NoCredentials .`);
     await writeAbac('subjects/alice', `<${webId}> ex:role ex:Doctor .`);
-    await writeAbac(`resources/localhost:${port}/records`, `
+    await writeAbac('resources/localhost/records', `
       <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`);
     await writeAbac('rules/R001', `
       <#R001> a abac:Rule ; abac:grants acl:Read ;

@@ -81,10 +81,11 @@ async function startServer(port: number, policy: string, variables: Record<strin
       abac:value abac:BoundToken, abac:BearerToken, abac:Unsecure, abac:NoCredentials ;
       abac:defaultValue abac:NoCredentials .`);
   await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor .`);
-  await writeAbac('resources/categories', `
-    <${joinUrl(baseUrl, 'hours/')}> ex:category ex:HoursOnly .
-    <${joinUrl(baseUrl, 'network/')}> ex:category ex:InternalOnly .
-    <${joinUrl(baseUrl, 'proof/')}> ex:category ex:ProofOnly .`);
+  const categories = { hours: 'HoursOnly', network: 'InternalOnly', proof: 'ProofOnly' };
+  for (const [ folder, category ] of Object.entries(categories)) {
+    await writeAbac(`resources/localhost/${folder}`, `
+      <${joinUrl(baseUrl, folder, '/')}> ex:category ex:${category} .`);
+  }
   await writeAbac('rules/R001', `
     <#R001> a abac:Rule ; abac:grants acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:HoursOnly ], [ abac:period abac:BusinessHours ] .`);

@@ -4,7 +4,9 @@ import {
   buildAttributeVector,
   buildEnvironmentVector,
   getAttributeDefinitions,
+  getMirroredResource,
   getRules,
+  isWithin,
 } from '../../../../src/authorization/abac/AbacUtil';
 import type { AttributeDefinition } from '../../../../src/authorization/abac/AbacTypes';
 import type { Logger } from '../../../../src/logging/Logger';
@@ -166,6 +168,27 @@ describe('AbacUtil', (): void => {
       expect(logger.warn).toHaveBeenCalledWith(
         `${records} assigns ${ex}category ${ex}Surgical, which is not one of its values`,
       );
+    });
+  });
+
+  describe('#getMirroredResource', (): void => {
+    it('returns the resource that a part of the resources subtree mirrors, by host and path.', (): void => {
+      const resources = `${baseUrl}.abac/resources/`;
+      expect(getMirroredResource(`${resources}example.com/records/`, resources)).toBe(`${baseUrl}records/`);
+      const local = 'http://localhost:3000/.abac/resources/';
+      expect(getMirroredResource(`${local}alice.localhost/notes`, local)).toBe('http://alice.localhost:3000/notes');
+      expect(getMirroredResource(`${local}localhost`, local)).toBe('http://localhost:3000');
+      expect(getMirroredResource(resources, resources)).toBeUndefined();
+      expect(getMirroredResource(`${baseUrl}.abac/rules/R001`, resources)).toBeUndefined();
+    });
+  });
+
+  describe('#isWithin', (): void => {
+    it('accepts the scope itself and what lies beneath it, at a path boundary.', (): void => {
+      const records = `${baseUrl}records`;
+      expect([ records, `${records}/`, `${records}/2026/note.ttl` ].map((path): boolean => isWithin(path, records)))
+        .toEqual([ true, true, true ]);
+      expect([ `${records}-2026/`, baseUrl ].map((path): boolean => isWithin(path, records))).toEqual([ false, false ]);
     });
   });
 

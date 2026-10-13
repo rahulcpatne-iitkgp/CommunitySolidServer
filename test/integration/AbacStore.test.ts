@@ -38,7 +38,7 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
   const definition = joinUrl(abac, 'definitions/role');
   const resourceDefinition = joinUrl(abac, 'definitions/category');
   const subject = joinUrl(abac, 'subjects/alice.example/profile/card');
-  const resource = joinUrl(abac, 'resources/records');
+  const resource = joinUrl(abac, 'resources/localhost/records');
   const rule = joinUrl(abac, 'rules/R001');
   const data = joinUrl(baseUrl, 'records/data.txt');
 
