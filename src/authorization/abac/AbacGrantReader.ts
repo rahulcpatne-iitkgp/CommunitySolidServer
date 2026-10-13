@@ -11,16 +11,24 @@ import type { GrantMap } from '../GrantReader';
 import { GrantReader } from '../GrantReader';
 import type { PermissionReaderInput } from '../PermissionReader';
 import type { AbacDataLoader } from './AbacDataLoader';
-import type { AttributeDefinition, AttributeVector, Rule } from './AbacTypes';
+import type { AttributeCondition, AttributeDefinition, AttributeVector, Rule } from './AbacTypes';
 import { buildAttributeVector, buildEnvironmentVector, getAttributeDefinitions, getRules } from './AbacUtil';
 import type { EnvironmentAttributeResolver } from './EnvironmentAttributeResolver';
 import { evaluateRules } from './RuleEvaluator';
+
+/**
+ * Whether the condition is on an attribute of the resource, given the definition of every attribute it can name.
+ */
+function isOnResource({ attribute }: AttributeCondition, defined: Map<string, AttributeDefinition>): boolean {
+  return defined.get(attribute)!.appliesTo === ABAC.Resource;
+}
 
 /**
  * Determines which access modes the rules of the global catalogue grant on each target,
  * based on the attributes of the requesting agent, of the target in the ABAC store,
  * and of the circumstances of the request.
  * A resource inherits the attribute values of its closest ancestor that assigns them.
+ * Every rule has to condition on the resource, so the catalogue only opens what has been labelled.
  */
 export class AbacGrantReader extends GrantReader {
   protected readonly logger = getLoggerFor(this);
@@ -118,7 +126,10 @@ export class AbacGrantReader extends GrantReader {
 
   /**
    * Why the given rule can never match, if it cannot: it names an attribute without a valid definition,
-   * or a value outside its attribute's value space.
+   * or a value outside its attribute's value space, or it does not condition on the resource.
+   * A rule conditions on the resource through an `allOf` condition on a resource attribute,
+   * or an `anyOf` whose conditions all are, so it only reaches what has been labelled.
+   * A `noneOf` condition narrows a rule, but would still let it reach every resource nobody labelled.
    */
   private findProblem(rule: Rule, defined: Map<string, AttributeDefinition>): string | undefined {
     const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
@@ -131,6 +142,11 @@ export class AbacGrantReader extends GrantReader {
       values.filter((value): boolean => !defined.get(attribute)!.values.has(value))));
     if (foreignValues.size > 0) {
       return `names values outside their attributes' value spaces: ${[ ...foreignValues ].join(', ')}`;
+    }
+    const isScoped = rule.allOf.some((condition): boolean => isOnResource(condition, defined)) ||
+      (rule.anyOf.length > 0 && rule.anyOf.every((condition): boolean => isOnResource(condition, defined)));
+    if (!isScoped) {
+      return 'does not condition on the resource, through allOf or an anyOf naming only resource attributes';
     }
   }
 

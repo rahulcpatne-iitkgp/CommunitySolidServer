@@ -36,6 +36,7 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
 
   const abac = joinUrl(baseUrl, '.abac/');
   const definition = joinUrl(abac, 'definitions/role');
+  const resourceDefinition = joinUrl(abac, 'definitions/category');
   const subject = joinUrl(abac, 'subjects/alice.example/profile/card');
   const resource = joinUrl(abac, 'resources/records');
   const rule = joinUrl(abac, 'rules/R001');
@@ -74,9 +75,12 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
     const documents = {
       [definition]: `ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
         abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`,
+      [resourceDefinition]: `ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`,
       [subject]: `<${ALICE}> ex:role ex:Doctor .`,
       [resource]: `<${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`,
-      [rule]: '<#R001> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Doctor ] .',
+      [rule]: `<#R001> a abac:Rule ; abac:grants acl:Read ;
+        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`,
     };
     for (const [ url, turtle ] of Object.entries(documents)) {
       await expect(send(url, ADMIN, 'PUT', turtle)).resolves.toBe(201);
