@@ -109,10 +109,10 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
   });
 
   it('cannot grant access to the server internals, whatever the rules say.', async(): Promise<void> => {
-    await expect(send(joinUrl(baseUrl, '.internal/'), ALICE)).resolves.not.toBe(200);
+    await expect(send(joinUrl(baseUrl, '.internal/'), ALICE)).resolves.toBe(403);
   });
 
   it('cannot grant access to the ABAC store itself.', async(): Promise<void> => {
-    await expect(send(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), ALICE)).resolves.not.toBe(200);
+    await expect(send(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), ALICE)).resolves.toBe(403);
   });
 });

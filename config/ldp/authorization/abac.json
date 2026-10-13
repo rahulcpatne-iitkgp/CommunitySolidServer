@@ -9,6 +9,14 @@
   "@graph": [
     {
       "comment": "ACP authorization, with ABAC grants that the denials in the ACRs override."
+    },
+    {
+      "comment": "Records the circumstances of each request beside its credentials, as the ABAC rules can depend on them.",
+      "@id": "urn:solid-server:default:UnionCredentialsExtractor",
+      "@type": "UnionCredentialsExtractor",
+      "extractors": [
+        { "@type": "EnvironmentCredentialsExtractor" }
+      ]
     }
   ]
 }

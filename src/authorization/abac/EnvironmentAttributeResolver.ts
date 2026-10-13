@@ -12,7 +12,7 @@ const authMethods = new Map<RequestEnvironment['authScheme'], string>([
  * Parses an `HH:MM` time of day into minutes since midnight.
  */
 function toMinutes(time: string): number {
-  const match = /^(\d{2}):(\d{2})$/u.exec(time);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/u.exec(time);
   if (!match) {
     throw new Error(`Invalid time of day ${time}, expected HH:MM.`);
   }

@@ -31,10 +31,7 @@
         ]
       },
       "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
-      "excludePaths": [
-        "^$",
-        "^/\\..*"
-      ],
+      "excludePaths": [ "^/\\..*" ],
       "loader": {
         "comment": "Reads the ABAC store directly through the ResourceStore, bypassing authorization.",
         "@id": "urn:solid-server:default:AbacDataLoader",
@@ -45,7 +42,10 @@
       }
     },
     {
-      "comment": "Routes requests on the ABAC store to the reader that guards it.",
+      "comment": [
+        "Routes requests on the ABAC store to the reader that guards it.",
+        "The store's location is also set on the loader and the store reader, and covered by the excluded paths: move all of them together, or the store is left unguarded."
+      ],
       "@id": "urn:solid-server:default:PathBasedReader",
       "@type": "PathBasedReader",
       "paths": [

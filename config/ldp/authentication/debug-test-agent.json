@@ -7,18 +7,19 @@
         "This extractor always sets the credentials to the fixed value."
       ],
       "@id": "urn:solid-server:default:CredentialsExtractor",
-      "@type": "UnionCredentialsExtractor",
-      "extractors": [
-        {
-          "@type": "UnsecureConstantCredentialsExtractor",
-          "agent": "http://test.com/card#me"
-        },
-        {
-          "comment": "Records the circumstances of the request, so authorization can take them into account.",
-          "@type": "EnvironmentCredentialsExtractor"
-        },
-        { "@type": "PublicCredentialsExtractor" }
-      ]
+      "@type": "CachedHandler",
+      "source": {
+        "comment": "Shares its identifier with the union in dpop-bearer.json, so a feature can add an extractor whichever of them is used.",
+        "@id": "urn:solid-server:default:UnionCredentialsExtractor",
+        "@type": "UnionCredentialsExtractor",
+        "extractors": [
+          {
+            "@type": "UnsecureConstantCredentialsExtractor",
+            "agent": "http://test.com/card#me"
+          },
+          { "@type": "PublicCredentialsExtractor" }
+        ]
+      }
     }
   ]
 }

@@ -1,6 +1,6 @@
 import type { NamedNode } from '@rdfjs/types';
 import { DataFactory } from 'n3';
-import type { RequestEnvironment } from '../../authentication/EnvironmentCredentialsExtractor';
+import { isRequestEnvironment } from '../../authentication/EnvironmentCredentialsExtractor';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../../logging/LogUtil';
 import type { IdentifierStrategy } from '../../util/identifiers/IdentifierStrategy';
@@ -11,7 +11,7 @@ import type { GrantMap } from '../GrantReader';
 import { GrantReader } from '../GrantReader';
 import type { PermissionReaderInput } from '../PermissionReader';
 import type { AbacDataLoader } from './AbacDataLoader';
-import type { AttributeDefinition, AttributeVector } from './AbacTypes';
+import type { AttributeDefinition, AttributeVector, Rule } from './AbacTypes';
 import { buildAttributeVector, buildEnvironmentVector, getAttributeDefinitions, getRules } from './AbacUtil';
 import type { EnvironmentAttributeResolver } from './EnvironmentAttributeResolver';
 import { evaluateRules } from './RuleEvaluator';
@@ -78,9 +78,10 @@ export class AbacGrantReader extends GrantReader {
     );
     const environmentVector = this.resolveEnvironment(
       definitions.filter(({ appliesTo }): boolean => appliesTo === ABAC.Environment),
-      credentials.environment as RequestEnvironment | undefined,
+      credentials.environment,
     );
     const rules = [ ...getRules(ruleData) ];
+    this.reportUndefinedAttributes(rules, definitions);
 
     for (const target of requestedModes.distinctKeys()) {
       if (this.isExcluded(target)) {
@@ -102,13 +103,33 @@ export class AbacGrantReader extends GrantReader {
   }
 
   /**
-   * Whether the given identifier is outside the server or matches one of the excluded paths.
-   * The `PathBasedReader` veto does not cover `/.internal/` here, as `AuxiliaryReader` has already
-   * rewritten that identifier to its subject resource.
+   * Warns about every rule naming an attribute without a valid definition, which never matches.
+   */
+  private reportUndefinedAttributes(rules: Rule[], definitions: AttributeDefinition[]): void {
+    const defined = new Set(definitions.map(({ iri }): string => iri));
+    for (const rule of rules) {
+      const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
+      const unknown = [ ...new Set(conditions.map(({ attribute }): string => attribute)) ]
+        .filter((attribute): boolean => !defined.has(attribute));
+      if (unknown.length > 0) {
+        this.logger.warn(`Rule ${rule.iri} never matches, as it names undefined attributes: ${unknown.join(', ')}`);
+      }
+    }
+  }
+
+  /**
+   * Whether the given identifier is outside the server's identifier space or matches one of the excluded paths.
+   * The `PathBasedReader` veto does not cover `/.internal/` here: `AuxiliaryReader` has already rewritten it
+   * to its subject resource, the root without a trailing slash, which is outside that space.
+   * The excluded paths apply only below the base URL, where the server keeps its own namespaces;
+   * a pod on a subdomain holds nothing but its owner's data.
    */
   private isExcluded(identifier: ResourceIdentifier): boolean {
-    if (!identifier.path.startsWith(this.baseUrl) && `${identifier.path}/` !== this.baseUrl) {
+    if (!this.identifierStrategy.supportsIdentifier(identifier)) {
       return true;
+    }
+    if (!identifier.path.startsWith(this.baseUrl)) {
+      return false;
     }
     const relative = identifier.path.slice(trimTrailingSlashes(this.baseUrl).length);
     return this.excludePaths.some((regex): boolean => regex.test(relative));
@@ -119,14 +140,15 @@ export class AbacGrantReader extends GrantReader {
    * Falls back to their declared defaults when nothing recorded those circumstances,
    * which means the extractor that records them is missing from the configuration.
    */
-  private resolveEnvironment(definitions: AttributeDefinition[], environment?: RequestEnvironment): AttributeVector {
+  private resolveEnvironment(definitions: AttributeDefinition[], environment: unknown): AttributeVector {
     if (definitions.length === 0) {
       return {};
     }
-    if (!environment) {
+    if (!isRequestEnvironment(environment)) {
       this.logger.warn(`No request context was recorded, so environment attributes fall back to their defaults.`);
+      return buildEnvironmentVector(definitions, {});
     }
-    return buildEnvironmentVector(definitions, environment ? this.environmentResolver.resolve(environment) : {});
+    return buildEnvironmentVector(definitions, this.environmentResolver.resolve(environment));
   }
 
   /**

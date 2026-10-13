@@ -1,6 +1,6 @@
 /**
  * The definition of a single attribute, as found in the `/.abac/definitions/` subtree.
- * `appliesTo` is the kind of entity it describes, a subject or a resource.
+ * `appliesTo` is the kind of entity it describes: a subject, a resource, or the environment of a request.
  */
 export interface AttributeDefinition {
   iri: string;
