@@ -72,7 +72,7 @@ export function matchPolicyMatcher(
 
 /**
  * Evaluates ACP's allOf/anyOf/noneOf policy shape for both owner policies and catalogue rules.
- * A possible match is used for denials; only a definite match can grant access.
+ * A possible match is used for denials; only a definite match can allow access.
  */
 export function evaluatePolicy(
   policy: Pick<IPolicy, 'allOf' | 'anyOf' | 'noneOf'>,

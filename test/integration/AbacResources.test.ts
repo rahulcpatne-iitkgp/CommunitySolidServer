@@ -56,7 +56,7 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
     ({ app, store } = instances);
     await app.start();
 
-    // No ACRs, so only ABAC can grant access. Alice's assignments and those of `records/` also claim an attribute
+    // No ACRs, so only ABAC can allow access. Alice's assignments and those of `records/` also claim an attribute
     // describing the other kind of entity, which must be ignored.
     for (const url of [ note, rota, photo ]) {
       await write(url, 'data', 'text/plain');
@@ -73,7 +73,7 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
       <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical ; ex:role ex:Doctor .
       <${joinUrl(baseUrl, 'records/admin/')}> ex:category ex:Administrative .`);
     await writeAbac('rules/R001', `
-      <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write ;
+      <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write ;
         abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
   });
 
@@ -81,7 +81,7 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
     await app.stop();
   });
 
-  it('scopes a grant to the resources that inherit a matching attribute.', async(): Promise<void> => {
+  it('scopes an allow to the resources that inherit a matching attribute.', async(): Promise<void> => {
     await expect(send(note, ALICE)).resolves.toBe(200);
     await expect(send(joinUrl(baseUrl, 'holiday-photos/'), ALICE)).resolves.toBe(403);
   });
@@ -106,7 +106,7 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
       ex:sensitivity a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
         abac:value ex:Internal, ex:Confidential ; abac:defaultValue ex:Internal .`);
     await writeAbac('rules/R002', `
-      <#R002> a abac:Rule ; abac:grants acl:Read ;
+      <#R002> a abac:Rule ; abac:allow acl:Read ;
         abac:allOf [ ex:role ex:Nurse ], [ ex:sensitivity ex:Internal ] .`);
     await expect(send(photo, BOB)).resolves.toBe(200);
   });
@@ -114,10 +114,10 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
   it('fails closed on a value outside the value space of its attribute.', async(): Promise<void> => {
     await writeAbac('subjects/carol.example/profile/card', `<${CAROL}> ex:role ex:Surgeon .`);
     await writeAbac('rules/R003', `
-      <#R003> a abac:Rule ; abac:grants acl:Write ;
+      <#R003> a abac:Rule ; abac:allow acl:Write ;
         abac:allOf [ ex:category ex:Administrative ] ; abac:noneOf [ ex:role ex:Nurse ] .`);
     await writeAbac('rules/R004', `
-      <#R004> a abac:Rule ; abac:grants acl:Write ;
+      <#R004> a abac:Rule ; abac:allow acl:Write ;
         abac:allOf [ ex:category ex:Administrative ] ; abac:noneOf [ ex:role ex:Porter ] .`);
     await expect(send(rota, ALICE, 'PUT', 'rota')).resolves.toBe(205);
     await expect(send(rota, CAROL, 'PUT', 'rota')).resolves.toBe(403);

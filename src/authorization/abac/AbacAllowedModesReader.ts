@@ -5,8 +5,8 @@ import type { IdentifierStrategy } from '../../util/identifiers/IdentifierStrate
 import { IdentifierSetMultiMap } from '../../util/map/IdentifierMap';
 import { ensureTrailingSlash, trimTrailingSlashes } from '../../util/PathUtil';
 import { ABAC } from '../../util/Vocabularies';
-import type { GrantMap } from '../GrantReader';
-import { GrantReader } from '../GrantReader';
+import type { AllowedModesMap } from '../AllowedModesReader';
+import { AllowedModesReader } from '../AllowedModesReader';
 import type { PermissionReaderInput } from '../PermissionReader';
 import type { AbacDataLoader } from './AbacDataLoader';
 import type { AbacRequestContext } from './AbacContextBuilder';
@@ -24,13 +24,13 @@ function isOnResource({ attribute }: AttributeCondition, defined: Map<string, At
 }
 
 /**
- * Determines which access modes the rules of the global catalogue grant on each target,
+ * Determines which access modes the rules of the global catalogue allow on each target,
  * based on the attributes of the requesting agent, of the target in the ABAC store,
  * and of the circumstances of the request.
  * A resource inherits the attribute values of its closest ancestor that assigns them.
  * Every rule has to condition on the resource, so the catalogue only opens what has been labelled.
  */
-export class AbacGrantReader extends GrantReader {
+export class AbacAllowedModesReader extends AllowedModesReader {
   protected readonly logger = getLoggerFor(this);
 
   private readonly loader: AbacDataLoader;
@@ -45,7 +45,7 @@ export class AbacGrantReader extends GrantReader {
    * @param environmentResolver - Used to value the attributes describing the request itself.
    * @param baseUrl - Base URL of the server.
    * @param excludePaths - Regular expressions, relative to the base URL and starting with a slash,
-   *                       of resources this reader never grants access to.
+   *                       of resources this reader never allows access to.
    */
   public constructor(
     loader: AbacDataLoader,
@@ -62,44 +62,44 @@ export class AbacGrantReader extends GrantReader {
     this.excludePaths = excludePaths.map((path): RegExp => new RegExp(path, 'u'));
   }
 
-  public async handle(input: PermissionReaderInput): Promise<GrantMap> {
+  public async handle(input: PermissionReaderInput): Promise<AllowedModesMap> {
     if (!input.credentials.agent?.webId) {
       this.logger.debug(`No WebID found, ABAC has no opinion on this request.`);
       return new IdentifierSetMultiMap();
     }
-    return (await this.prepare(input)).grants;
+    return (await this.prepare(input)).allowedModes;
   }
 
   /** Shares the request's resolved attributes with the owner channel, without exposing the assignments over HTTP. */
   public async prepare({ credentials, requestedModes }: PermissionReaderInput):
-  Promise<{ context: AbacRequestContext; grants: GrantMap }> {
+  Promise<{ context: AbacRequestContext; allowedModes: AllowedModesMap }> {
     const context = await this.contextBuilder.build(credentials, requestedModes.distinctKeys());
-    const grants: GrantMap = new IdentifierSetMultiMap();
+    const allowedModes: AllowedModesMap = new IdentifierSetMultiMap();
     const webId = credentials.agent?.webId;
     if (!webId) {
-      return { context, grants };
+      return { context, allowedModes };
     }
     let rules: Rule[];
     try {
       rules = this.getValidRules(getRules(await this.loader.readRules()), [ ...context.definitions.values() ]);
     } catch (error: unknown) {
-      this.logger.warn(`Ignoring organisational grants whose rules could not be read: ${createErrorMessage(error)}`);
-      return { context, grants };
+      this.logger.warn(`Ignoring allowed modes from unreadable catalogue rules: ${createErrorMessage(error)}`);
+      return { context, allowedModes };
     }
 
     for (const target of requestedModes.distinctKeys()) {
       if (this.isExcluded(target)) {
-        this.logger.debug(`ABAC will not grant anything on the excluded resource ${target.path}`);
+        this.logger.debug(`ABAC will not allow anything on the excluded resource ${target.path}`);
         continue;
       }
       const vector = context.vectors.get(target)!;
       const modes = evaluateRules(rules, vector);
       this.logger.debug(
-        `ABAC grants ${webId} [${[ ...modes ].join(', ')}] on ${target.path}: ${JSON.stringify(vector)}`,
+        `ABAC allows ${webId} [${[ ...modes ].join(', ')}] on ${target.path}: ${JSON.stringify(vector)}`,
       );
-      grants.set(target, modes);
+      allowedModes.set(target, modes);
     }
-    return { context, grants };
+    return { context, allowedModes };
   }
 
   /**

@@ -79,7 +79,7 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
         abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`,
       [subject]: `<${ALICE}> ex:role ex:Doctor .`,
       [resource]: `<${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`,
-      [rule]: `<#R001> a abac:Rule ; abac:grants acl:Read ;
+      [rule]: `<#R001> a abac:Rule ; abac:allow acl:Read ;
         abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`,
     };
     for (const [ url, turtle ] of Object.entries(documents)) {
@@ -90,7 +90,7 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
   it('refuses writes to the store from everyone else, the owner included.', async(): Promise<void> => {
     const writes: [string, string, string?][] = [
       [ subject, 'PUT', `<${ALICE}> ex:role ex:Surgeon .` ],
-      [ joinUrl(abac, 'rules/R002'), 'PUT', '<#R002> a abac:Rule ; abac:grants acl:Write .' ],
+      [ joinUrl(abac, 'rules/R002'), 'PUT', '<#R002> a abac:Rule ; abac:allow acl:Write .' ],
       [ `${rule}.acr`, 'PUT', `<#policy> acl:agent <${ALICE}> .` ],
       [ rule, 'DELETE' ],
     ];

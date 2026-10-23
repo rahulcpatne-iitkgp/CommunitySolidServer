@@ -37,7 +37,7 @@ function url(port: number, path: string): string {
 
 /**
  * Starts a server with the ABAC layer and the given environment policy, seeded identically in both cases.
- * The rules each grant read on one category of resource, so a refusal names the attribute that caused it.
+ * The rules each allow read on one category of resource, so a refusal names the attribute that caused it.
  */
 async function startServer(port: number, policy: string, variables: Record<string, unknown>): Promise<App> {
   const baseUrl = `http://localhost:${port}/`;
@@ -87,13 +87,13 @@ async function startServer(port: number, policy: string, variables: Record<strin
       <${joinUrl(baseUrl, folder, '/')}> ex:category ex:${category} .`);
   }
   await writeAbac('rules/R001', `
-    <#R001> a abac:Rule ; abac:grants acl:Read ;
+    <#R001> a abac:Rule ; abac:allow acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:HoursOnly ], [ abac:period abac:BusinessHours ] .`);
   await writeAbac('rules/R002', `
-    <#R002> a abac:Rule ; abac:grants acl:Read ;
+    <#R002> a abac:Rule ; abac:allow acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:InternalOnly ], [ abac:network abac:Internal ] .`);
   await writeAbac('rules/R003', `
-    <#R003> a abac:Rule ; abac:grants acl:Read ;
+    <#R003> a abac:Rule ; abac:allow acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:ProofOnly ], [ abac:authMethod abac:BoundToken ] .`);
   return app;
 }
@@ -117,12 +117,12 @@ describe('An LDP handler with ABAC rules over the circumstances of a request', (
     await outsideApp.stop();
   });
 
-  it('grants inside the business-hours window and refuses outside it.', async(): Promise<void> => {
+  it('allows inside the business-hours window and refuses outside it.', async(): Promise<void> => {
     await expect(getAs(url(inside, 'hours/note.txt'), ALICE)).resolves.toBe(200);
     await expect(getAs(url(outside, 'hours/note.txt'), ALICE)).resolves.toBe(403);
   });
 
-  it('grants from the internal network and refuses from outside it.', async(): Promise<void> => {
+  it('allows from the internal network and refuses from outside it.', async(): Promise<void> => {
     await expect(getAs(url(inside, 'network/note.txt'), ALICE)).resolves.toBe(200);
     await expect(getAs(url(outside, 'network/note.txt'), ALICE)).resolves.toBe(403);
   });

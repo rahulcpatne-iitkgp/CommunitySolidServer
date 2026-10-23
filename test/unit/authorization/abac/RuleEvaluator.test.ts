@@ -9,8 +9,8 @@ describe('A RuleEvaluator', (): void => {
     return { attribute: `${ex}${attribute}`, values: values.map((value): string => `${ex}${value}`) };
   }
 
-  function rule(iri: string, grants: string[], conditions: Partial<Rule> = {}): Rule {
-    return { iri, grants: new Set(grants), allOf: [], anyOf: [], noneOf: [], ...conditions };
+  function rule(iri: string, allowedModes: string[], conditions: Partial<Rule> = {}): Rule {
+    return { iri, allow: new Set(allowedModes), allOf: [], anyOf: [], noneOf: [], ...conditions };
   }
 
   const vector: AttributeVector = {
@@ -35,13 +35,13 @@ describe('A RuleEvaluator', (): void => {
     }),
   ];
 
-  const granted = new Set([ `${acl}Read`, `${acl}Control`, `${acl}Append` ]);
+  const allowed = new Set([ `${acl}Read`, `${acl}Control`, `${acl}Append` ]);
 
-  it('grants the union of the modes of every matching rule.', (): void => {
-    expect(evaluateRules(rules, vector)).toEqual(granted);
+  it('allows the union of the modes of every matching rule.', (): void => {
+    expect(evaluateRules(rules, vector)).toEqual(allowed);
   });
 
-  it('grants nothing for an empty catalogue.', (): void => {
+  it('allows nothing for an empty catalogue.', (): void => {
     expect(evaluateRules([], vector)).toEqual(new Set());
   });
 
@@ -68,7 +68,7 @@ describe('A RuleEvaluator', (): void => {
       [ ...rules.slice(1), rules[0] ],
     ];
     for (const permutation of permutations) {
-      expect(evaluateRules(permutation, vector)).toEqual(granted);
+      expect(evaluateRules(permutation, vector)).toEqual(allowed);
     }
   });
 });

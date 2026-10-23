@@ -40,8 +40,8 @@ const noPermissions: PermissionSet = Object.freeze({
  * to nothing but what it mirrors and what lies beneath it, and pods do not nest.
  * A part mirroring something above every pod, such as the root container, has no owner.
  *
- * Unlike `AbacGrantReader`, which can only grant, it returns explicit `false`,
- * as only that overrides what other readers grant.
+ * Unlike `AbacAllowedModesReader`, which can only allow, it returns explicit `false`,
+ * as only that overrides what other readers allow.
  */
 export class AbacStoreReader extends PermissionReader {
   protected readonly logger = getLoggerFor(this);

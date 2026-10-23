@@ -18,8 +18,8 @@ import { readableToQuads } from '../util/StreamUtil';
 import { ACL } from '../util/Vocabularies';
 import { getAccessControlledResources } from './AcpUtil';
 import type { AbacRequestContext } from './abac/AbacContextBuilder';
-import type { AbacGrantReader } from './abac/AbacGrantReader';
-import type { GrantMap, GrantReader } from './GrantReader';
+import type { AbacAllowedModesReader } from './abac/AbacAllowedModesReader';
+import type { AllowedModesMap, AllowedModesReader } from './AllowedModesReader';
 import type { AttributeMatcher } from './PolicyEvaluator';
 import { evaluatePolicy } from './PolicyEvaluator';
 import type { PermissionReaderInput } from './PermissionReader';
@@ -36,16 +36,17 @@ const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
   [ACL.Control]: [ AclMode.control ],
 } as const;
 
-// Access granted outside the ACRs counts only for these modes.
-const grantableModes: ReadonlySet<string> = new Set([ ACL.Read, ACL.Write, ACL.Append ]);
+// Outside policies can allow only these modes; Control stays with the owner.
+const outsideModeWhitelist: ReadonlySet<string> = new Set([ ACL.Read, ACL.Write, ACL.Append ]);
 
 /**
  * Finds the permissions of a resource as defined in the corresponding ACRs.
  * Implementation based on https://solid.github.io/authorization-panel/acp-specification/.
  *
- * Access granted outside the ACRs, by an optional {@link GrantReader}, is evaluated as one more allow
- * beside their policies, so a policy that denies a mode overrides it as it would any other allow.
- * An optional {@link AbacGrantReader} also shares its resolved attribute context with ACP matchers.
+ * Access allowed outside the ACRs, by an optional {@link AllowedModesReader},
+ * applies only where owner policies are silent.
+ * An owner policy denying a mode overrides any mode allowed outside the ACRs.
+ * An optional {@link AbacAllowedModesReader} also shares its resolved attribute context with ACP matchers.
  * Such access never includes Control: that is control over the ACRs themselves,
  * which would let it rewrite the very policies that override it.
  *
@@ -57,22 +58,22 @@ export class AcpReader extends PermissionReader {
   private readonly acrStrategy: AuxiliaryStrategy;
   private readonly acrStore: ResourceStore;
   private readonly identifierStrategy: IdentifierStrategy;
-  private readonly grantReader?: GrantReader;
-  private readonly abacReader?: AbacGrantReader;
+  private readonly allowedModesReader?: AllowedModesReader;
+  private readonly abacAllowedModesReader?: AbacAllowedModesReader;
 
   public constructor(
     acrStrategy: AuxiliaryStrategy,
     acrStore: ResourceStore,
     identifierStrategy: IdentifierStrategy,
-    grantReader?: GrantReader,
-    abacReader?: AbacGrantReader,
+    allowedModesReader?: AllowedModesReader,
+    abacAllowedModesReader?: AbacAllowedModesReader,
   ) {
     super();
     this.acrStrategy = acrStrategy;
     this.acrStore = acrStore;
     this.identifierStrategy = identifierStrategy;
-    this.grantReader = grantReader;
-    this.abacReader = abacReader;
+    this.allowedModesReader = allowedModesReader;
+    this.abacAllowedModesReader = abacAllowedModesReader;
   }
 
   public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<PermissionMap> {
@@ -86,10 +87,10 @@ export class AcpReader extends PermissionReader {
       policiesByTarget.set(target, await this.getPolicies(target, resourceCache));
     }
 
-    let abac: Awaited<ReturnType<AbacGrantReader['prepare']>> | undefined;
-    if (this.abacReader) {
+    let abac: Awaited<ReturnType<AbacAllowedModesReader['prepare']>> | undefined;
+    if (this.abacAllowedModesReader) {
       try {
-        abac = await this.abacReader.prepare({ credentials, requestedModes });
+        abac = await this.abacAllowedModesReader.prepare({ credentials, requestedModes });
       } catch (error: unknown) {
         const hasAttributePolicy = [ ...policiesByTarget.values() ].some((policies): boolean =>
           policies.some((policy): boolean => [ ...policy.allOf, ...policy.anyOf, ...policy.noneOf ]
@@ -99,19 +100,20 @@ export class AcpReader extends PermissionReader {
             cause: error,
           });
         }
-        this.logger.warn(
-          `Ignoring organisational grants whose attributes could not be read: ${createErrorMessage(error)}`,
-        );
+        this.logger.warn(`Ignoring catalogue modes; attributes could not be read: ${createErrorMessage(error)}`);
       }
     }
-    const grants = await this.readGrants({ credentials, requestedModes });
+    const otherAllowedModes = await this.readOutsideAllowedModes({ credentials, requestedModes });
     for (const target of requestedModes.distinctKeys()) {
-      const granted = new Set([ ...grants.get(target) ?? [], ...abac?.grants.get(target) ?? [] ]);
+      const outsideAllowedModes = new Set([
+        ...otherAllowedModes.get(target) ?? [],
+        ...abac?.allowedModes.get(target) ?? [],
+      ]);
       permissionMap.set(target, this.extractPermissions(
         target,
         credentials,
         policiesByTarget.get(target)!,
-        granted,
+        outsideAllowedModes,
         abac?.context,
       ));
     }
@@ -119,19 +121,19 @@ export class AcpReader extends PermissionReader {
   }
 
   /**
-   * Finds the access granted outside the ACRs.
+   * Finds the access allowed outside the ACRs.
    * It can only add to what the ACRs allow, so a failure to determine it is logged
    * rather than taking away what they allow.
    */
-  private async readGrants(input: PermissionReaderInput): Promise<GrantMap> {
-    if (!this.grantReader) {
+  private async readOutsideAllowedModes(input: PermissionReaderInput): Promise<AllowedModesMap> {
+    if (!this.allowedModesReader) {
       return new IdentifierSetMultiMap();
     }
     try {
-      return await this.grantReader.handleSafe(input);
+      return await this.allowedModesReader.handleSafe(input);
     } catch (error: unknown) {
       this.logger.warn(
-        `Ignoring access granted outside the ACRs, which could not be determined: ${createErrorMessage(error)}`,
+        `Ignoring outside allowed modes that could not be determined: ${createErrorMessage(error)}`,
       );
       return new IdentifierSetMultiMap();
     }
@@ -143,48 +145,48 @@ export class AcpReader extends PermissionReader {
    * @param target - Target to generate permissions for.
    * @param credentials - Credentials that are trying to access the resource.
    * @param policies - Effective policies from the target and its ancestors.
-   * @param granted - Access modes granted on the target outside the ACRs.
+   * @param outsideAllowedModes - Access modes allowed on the target outside the ACRs.
    */
   private extractPermissions(
     target: ResourceIdentifier,
     credentials: Credentials,
     policies: IPolicy[],
-    granted: ReadonlySet<string>,
+    outsideAllowedModes: ReadonlySet<string>,
     abac?: AbacRequestContext,
   ): PermissionSet {
     const context = this.createContext(target, credentials);
 
-    const denied = new Set<string>();
-    const ownerAllowed = new Set<string>();
+    const ownerDeniedModes = new Set<string>();
+    const ownerAllowedModes = new Set<string>();
     for (const policy of policies) {
       const result = abac ? evaluatePolicy(policy, context, abac.vectors.get(target)!, abac.definitions) : undefined;
       const applies = result ? undefined : applyPolicy(policy, context);
       const { definite, possible } = result ?? { definite: applies, possible: applies };
       if (definite) {
         for (const mode of policy.allow) {
-          ownerAllowed.add(mode);
+          ownerAllowedModes.add(mode);
         }
       }
       if (possible) {
         for (const mode of policy.deny) {
-          denied.add(mode);
+          ownerDeniedModes.add(mode);
         }
       }
     }
     // The catalogue is consulted only where the owner's policies are silent on that ACL mode.
-    const grants = [ ...granted ].filter((mode): boolean => grantableModes.has(mode) &&
-      !ownerAllowed.has(mode) && !denied.has(mode));
-    const allowed = [ ...ownerAllowed, ...grants ];
-    const overridden = [ ...granted ].filter((mode): boolean => denied.has(mode));
-    if (overridden.length > 0) {
+    const fallbackModes = [ ...outsideAllowedModes ].filter((mode): boolean => outsideModeWhitelist.has(mode) &&
+      !ownerAllowedModes.has(mode) && !ownerDeniedModes.has(mode));
+    const effectiveAllowedModes = [ ...ownerAllowedModes, ...fallbackModes ];
+    const blockedOutsideModes = [ ...outsideAllowedModes ].filter((mode): boolean => ownerDeniedModes.has(mode));
+    if (blockedOutsideModes.length > 0) {
       this.logger.debug(
-        `ACP denies ${overridden.join(', ')} on ${target.path}, overriding access granted outside the ACRs`,
+        `ACP denies ${blockedOutsideModes.join(', ')} on ${target.path}, overriding outside allowed modes`,
       );
     }
 
     const permissionSet: PermissionSet = {};
-    for (const aclMode of allowed) {
-      if (aclMode in modesMap && !denied.has(aclMode)) {
+    for (const aclMode of effectiveAllowedModes) {
+      if (aclMode in modesMap && !ownerDeniedModes.has(aclMode)) {
         for (const mode of modesMap[aclMode]) {
           permissionSet[mode as AccessMode] = true;
         }

@@ -1,7 +1,7 @@
 import { Parser, Store } from 'n3';
 import type { Credentials } from '../../../../src/authentication/Credentials';
 import type { AbacDataLoader } from '../../../../src/authorization/abac/AbacDataLoader';
-import { AbacGrantReader } from '../../../../src/authorization/abac/AbacGrantReader';
+import { AbacAllowedModesReader } from '../../../../src/authorization/abac/AbacAllowedModesReader';
 import { EnvironmentAttributeResolver } from '../../../../src/authorization/abac/EnvironmentAttributeResolver';
 import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
 import { AccessMode } from '../../../../src/authorization/permissions/Permissions';
@@ -20,8 +20,8 @@ jest.mock('../../../../src/logging/LogUtil', (): any => {
   return { getLoggerFor: (): Logger => logger };
 });
 
-describe('An AbacGrantReader', (): void => {
-  const logger: jest.Mocked<Logger> = getLoggerFor('AbacGrantReader') as any;
+describe('An AbacAllowedModesReader', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('AbacAllowedModesReader') as any;
   const baseUrl = 'http://example.com/';
   const alice = 'http://example.com/alice/profile/card#me';
   const bob = 'http://example.com/bob/profile/card#me';
@@ -55,31 +55,31 @@ describe('An AbacGrantReader', (): void => {
 
   // Matches medical and unlabelled resources alike, so only the exclusions keep it from the server's own.
   const matching = parse(`
-    <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write, acl:Control ;
+    <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write, acl:Control ;
       abac:allOf [ ex:role ex:Doctor ] ; abac:anyOf [ ex:category ex:Medical ], [ ex:category ex:Uncategorised ] .
   `);
   const nonMatching = parse(`
-    <#R002> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Surgeon ], [ ex:category ex:Medical ] .
+    <#R002> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Surgeon ], [ ex:category ex:Medical ] .
   `);
   const medical = parse(`
-    <#R003> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
+    <#R003> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
   `);
   const duringHours = parse(`
-    <#R004> a abac:Rule ; abac:grants acl:Read ;
+    <#R004> a abac:Rule ; abac:allow acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ], [ abac:period abac:BusinessHours ] .
   `);
   const unmatchable = parse(`
-    <#R005> a abac:Rule ; abac:grants acl:Write ;
+    <#R005> a abac:Rule ; abac:allow acl:Write ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] ; abac:noneOf [ ex:status ex:Suspended ] .
-    <#R006> a abac:Rule ; abac:grants acl:Write ;
+    <#R006> a abac:Rule ; abac:allow acl:Write ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] ; abac:noneOf [ ex:category ex:Psychiatric ] .
-    <#R007> a abac:Rule ; abac:grants acl:Write ; abac:allOf [ ex:role ex:Doctor ] .
-    <#R008> a abac:Rule ; abac:grants acl:Write ;
+    <#R007> a abac:Rule ; abac:allow acl:Write ; abac:allOf [ ex:role ex:Doctor ] .
+    <#R008> a abac:Rule ; abac:allow acl:Write ;
       abac:allOf [ ex:role ex:Doctor ] ; abac:noneOf [ ex:category ex:Administrative ] .
-    <#R009> a abac:Rule ; abac:grants acl:Write ; abac:anyOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
+    <#R009> a abac:Rule ; abac:allow acl:Write ; abac:anyOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
   `);
 
-  const noGrants = new IdentifierSetMultiMap<string>();
+  const noAllowedModes = new IdentifierSetMultiMap<string>();
   const businessHours = new Date('2026-10-07T10:00:00');
   const outOfHours = new Date('2026-10-07T22:00:00');
 
@@ -90,7 +90,7 @@ describe('An AbacGrantReader', (): void => {
     rules: Store | Error,
     definitionData = definitions,
     identifierStrategy: IdentifierStrategy = new SingleRootIdentifierStrategy(baseUrl),
-  ): AbacGrantReader {
+  ): AbacAllowedModesReader {
     const loader = {
       readDefinitions: jest.fn().mockResolvedValue(definitionData),
       readSubjectAttributes: jest.fn().mockResolvedValue(subjects),
@@ -103,7 +103,7 @@ describe('An AbacGrantReader', (): void => {
       }),
     } satisfies Partial<AbacDataLoader> as any;
     const resolver = new EnvironmentAttributeResolver('09:00', '17:00', [ '^127\\.' ]);
-    return new AbacGrantReader(loader, identifierStrategy, resolver, baseUrl, [ '^/\\..*' ]);
+    return new AbacAllowedModesReader(loader, identifierStrategy, resolver, baseUrl, [ '^/\\..*' ]);
   }
 
   function readRequest(...paths: string[]): AccessMap {
@@ -117,14 +117,14 @@ describe('An AbacGrantReader', (): void => {
     requestedModes = new IdentifierSetMultiMap([[ target, AccessMode.read ]]) as any;
   });
 
-  it('grants the modes of a matching rule on every requested target.', async(): Promise<void> => {
+  it('allows the modes of a matching rule on every requested target.', async(): Promise<void> => {
     requestedModes = new IdentifierSetMultiMap([
       [ target, AccessMode.read ],
       [ other, AccessMode.write ],
     ]) as any;
-    const granted = new Set([ ACL.Read, ACL.Write, ACL.Control ]);
+    const allowed = new Set([ ACL.Read, ACL.Write, ACL.Control ]);
     const result = await createReader(matching).handle({ credentials, requestedModes });
-    compareMaps(result, new IdentifierSetMultiMap([[ target, granted ], [ other, granted ]]));
+    compareMaps(result, new IdentifierSetMultiMap([[ target, allowed ], [ other, allowed ]]));
   });
 
   it('decides each target by the attribute values it inherits from its closest ancestor.', async(): Promise<void> => {
@@ -139,9 +139,9 @@ describe('An AbacGrantReader', (): void => {
   it('resolves each attribute only against the kind of entity its definition applies to.', async(): Promise<void> => {
     const reader = createReader(medical);
     requestedModes = readRequest('photos/img.jpg');
-    compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
+    compareMaps(await reader.handle({ credentials, requestedModes }), noAllowedModes);
     requestedModes = readRequest('records/2026/note.ttl');
-    compareMaps(await reader.handle({ credentials: { agent: { webId: bob }}, requestedModes }), noGrants);
+    compareMaps(await reader.handle({ credentials: { agent: { webId: bob }}, requestedModes }), noAllowedModes);
   });
 
   it('decides by the circumstances the request was made in.', async(): Promise<void> => {
@@ -152,20 +152,20 @@ describe('An AbacGrantReader', (): void => {
       new IdentifierSetMultiMap([[ target, ACL.Read ]]),
     );
     credentials = { agent: { webId: alice }, environment: { timestamp: outOfHours }};
-    compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
+    compareMaps(await reader.handle({ credentials, requestedModes }), noAllowedModes);
   });
 
   it('falls back to the declared default without a valid record of the circumstances.', async(): Promise<void> => {
     const reader = createReader(duringHours, withPeriod);
-    compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
+    compareMaps(await reader.handle({ credentials, requestedModes }), noAllowedModes);
     credentials = { agent: { webId: alice }, environment: { timestamp: businessHours.toISOString() }};
-    compareMaps(await reader.handle({ credentials, requestedModes }), noGrants);
+    compareMaps(await reader.handle({ credentials, requestedModes }), noAllowedModes);
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
-  it('warns about every rule that can never match, and grants nothing by it.', async(): Promise<void> => {
+  it('warns about every rule that can never match, and allows nothing by it.', async(): Promise<void> => {
     const result = await createReader(unmatchable).handle({ credentials, requestedModes });
-    compareMaps(result, noGrants);
+    compareMaps(result, noAllowedModes);
     expect(logger.warn.mock.calls).toEqual([
       [ `Rule ${baseUrl}#R005 never matches, as it names undefined attributes: http://example.org/hospital#status` ],
       [ `Rule ${baseUrl}#R006 never matches, as it names values outside their attributes' value spaces: ` +
@@ -177,32 +177,32 @@ describe('An AbacGrantReader', (): void => {
 
   it('has no opinion when no rule matches the agent.', async(): Promise<void> => {
     const result = await createReader(nonMatching).handle({ credentials, requestedModes });
-    compareMaps(result, noGrants);
+    compareMaps(result, noAllowedModes);
   });
 
   it('has no opinion on a request it cannot identify an agent for.', async(): Promise<void> => {
     const result = await createReader(matching).handle({ credentials: {}, requestedModes });
-    compareMaps(result, noGrants);
+    compareMaps(result, noAllowedModes);
   });
 
   it('still prepares resource attributes for an anonymous owner matcher, ' +
-    'without catalogue grants.', async(): Promise<void> => {
-    const { context, grants } = await createReader(matching).prepare({ credentials: {}, requestedModes });
+    'without catalogue allowed modes.', async(): Promise<void> => {
+    const { context, allowedModes } = await createReader(matching).prepare({ credentials: {}, requestedModes });
     expect(context.vectors.get(target)).toEqual({ 'http://example.org/hospital#category':
       'http://example.org/hospital#Medical' });
-    compareMaps(grants, noGrants);
+    compareMaps(allowedModes, noAllowedModes);
   });
 
   it('keeps the attribute context when the catalogue is unreadable.', async(): Promise<void> => {
-    const { context, grants } = await createReader(new Error('unavailable'))
+    const { context, allowedModes } = await createReader(new Error('unavailable'))
       .prepare({ credentials, requestedModes });
     expect(context.vectors.get(target)?.['http://example.org/hospital#role'])
       .toBe('http://example.org/hospital#Doctor');
-    compareMaps(grants, noGrants);
+    compareMaps(allowedModes, noAllowedModes);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('unavailable'));
   });
 
-  it('never grants anything on an excluded or off-server resource.', async(): Promise<void> => {
+  it('never allows anything on an excluded or off-server resource.', async(): Promise<void> => {
     const internal = { path: `${baseUrl}.internal/foo` };
     const root = { path: 'http://example.com' };
     const elsewhere = { path: 'http://elsewhere.example/other' };
@@ -210,10 +210,10 @@ describe('An AbacGrantReader', (): void => {
       [ internal, root, elsewhere ].map((id): [any, any] => [ id, AccessMode.read ]),
     ) as any;
     const result = await createReader(matching).handle({ credentials, requestedModes });
-    compareMaps(result, noGrants);
+    compareMaps(result, noAllowedModes);
   });
 
-  it('grants on a pod on a subdomain, but not on the server namespaces.', async(): Promise<void> => {
+  it('allows on a pod on a subdomain, but not on the server namespaces.', async(): Promise<void> => {
     const pod = { path: 'http://alice.example.com/records/note.ttl' };
     const internal = { path: `${baseUrl}.internal/foo` };
     requestedModes = new IdentifierSetMultiMap([[ pod, AccessMode.read ], [ internal, AccessMode.read ]]) as any;

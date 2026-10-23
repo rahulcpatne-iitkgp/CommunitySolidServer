@@ -42,7 +42,7 @@ async function send(url: string, webId?: string, method = 'GET', turtle?: string
   return (await fetch(url, { method, headers, body: turtle })).status;
 }
 
-describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
+describe('An LDP handler whose ABAC allows a pod owner can veto', (): void => {
   let app: App;
   let store: ResourceStore;
   let acp: AcpHelper;
@@ -112,7 +112,7 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     await send(labels('neighbour'), ADMIN, 'PUT', `${prefixes}
       <${neighbourPod}> ex:category ex:Uncategorised .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `
-      <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write, acl:Control ;
+      <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write, acl:Control ;
         abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
   });
 
@@ -120,7 +120,7 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     await app.stop();
   });
 
-  it('refuses a grant the owner denies, for that mode and agent only, until they lift it.', async(): Promise<void> => {
+  it('refuses an outside allow the owner denies, for that mode and agent only, until they lift it.', async(): Promise<void> => {
     await expect(send(note, ALICE)).resolves.toBe(200);
 
     await expect(setAcr(note, [ acp.createPolicy({ deny: [ 'read' ], anyOf: [ agent(ALICE) ]}) ])).resolves.toBe(201);
@@ -132,7 +132,7 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     await expect(send(note, ALICE)).resolves.toBe(200);
   });
 
-  it('puts the veto beyond the reach of a rule that grants Control.', async(): Promise<void> => {
+  it('puts the veto beyond the reach of a rule that allows Control.', async(): Promise<void> => {
     await expect(setAcr(note, [ acp.createPolicy({ deny: [ 'read' ], anyOf: [ agent(ALICE) ]}) ])).resolves.toBe(205);
     const lifted = acp.toTurtle(acp.createAcr({ resource: note }));
     await expect(send(`${note}.acr`, CAROL)).resolves.toBe(403);
@@ -140,7 +140,7 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     await expect(send(note, ALICE)).resolves.toBe(403);
   });
 
-  it('lets the policies on a container veto the grant on it and on its members.', async(): Promise<void> => {
+  it('lets the policies on a container veto the outside allow on it and on its members.', async(): Promise<void> => {
     const other = joinUrl(records, 'other.ttl');
     const created = joinUrl(records, 'new.ttl');
     await expect(setAcr(

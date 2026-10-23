@@ -55,11 +55,11 @@ describe('AbacUtil', (): void => {
 
   const rules = parse(`
     <#R001> a abac:Rule ;
-      abac:grants acl:Read, acl:Write ;
+      abac:allow acl:Read, acl:Write ;
       abac:allOf  [ a ex:Condition ; ex:role ex:Doctor ; ex:status ex:Active ] ;
       abac:anyOf  [ ex:department ex:Cardiology, ex:Emergency ] ;
       abac:noneOf [ ex:status ex:Suspended ] .
-    <#R002> a abac:Rule ; abac:grants acl:Read .
+    <#R002> a abac:Rule ; abac:allow acl:Read .
   `);
 
   beforeEach((): void => {
@@ -97,7 +97,7 @@ describe('AbacUtil', (): void => {
       expect([ ...getRules(rules) ]).toEqual([
         {
           iri: `${baseUrl}#R001`,
-          grants: new Set([ `${acl}Read`, `${acl}Write` ]),
+          allow: new Set([ `${acl}Read`, `${acl}Write` ]),
           allOf: [
             { attribute: `${ex}role`, values: [ `${ex}Doctor` ]},
             { attribute: `${ex}status`, values: [ `${ex}Active` ]},
@@ -107,7 +107,7 @@ describe('AbacUtil', (): void => {
         },
         {
           iri: `${baseUrl}#R002`,
-          grants: new Set([ `${acl}Read` ]),
+          allow: new Set([ `${acl}Read` ]),
           allOf: [],
           anyOf: [],
           noneOf: [],

@@ -3,17 +3,17 @@
   "@graph": [
     {
       "comment": [
-        "Shares the ABAC attribute context with owner ACP matchers and supplies catalogue grants where the owner is silent, so an owner denial overrides them.",
-        "Being part of ACP's verdict, they create and delete only through the parent container, and never reach an ACR, as they cannot grant Control."
+        "Shares the ABAC attribute context with owner ACP matchers and supplies allowed modes from the catalogue where the owner is silent, so an owner denial overrides them.",
+        "Being part of ACP's verdict, they create and delete only through the parent container, and never reach an ACR, as they cannot allow Control."
       ],
       "@id": "urn:solid-server:default:AcpReader",
       "@type": "AcpReader",
-      "abacReader": { "@id": "urn:solid-server:default:AbacGrantReader" }
+      "abacAllowedModesReader": { "@id": "urn:solid-server:default:AbacAllowedModesReader" }
     },
     {
-      "comment": "Determines which modes the ABAC rules grant, from the attributes of the requesting agent, the target resource and the request itself.",
-      "@id": "urn:solid-server:default:AbacGrantReader",
-      "@type": "AbacGrantReader",
+      "comment": "Determines which modes the ABAC rules allow, from the attributes of the requesting agent, the target resource and the request itself.",
+      "@id": "urn:solid-server:default:AbacAllowedModesReader",
+      "@type": "AbacAllowedModesReader",
       "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
       "environmentResolver": {
         "comment": [

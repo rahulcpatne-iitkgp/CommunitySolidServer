@@ -72,7 +72,7 @@ describe('An LDP handler with an ABAC rule over how an identity was proven', ():
     }
     credentials = await res.json();
 
-    // The target sits outside alice's pod and has no ACR, so only a rule can grant access to it.
+    // The target sits outside alice's pod and has no ACR, so only a rule can allow access to it.
     async function writeAbac(path: string, turtle: string): Promise<void> {
       await store.setRepresentation(
         { path: joinUrl(baseUrl, '.abac/', path) },
@@ -94,7 +94,7 @@ describe('An LDP handler with an ABAC rule over how an identity was proven', ():
     await writeAbac('resources/localhost/records', `
       <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`);
     await writeAbac('rules/R001', `
-      <#R001> a abac:Rule ; abac:grants acl:Read ;
+      <#R001> a abac:Rule ; abac:allow acl:Read ;
         abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ], [ abac:authMethod abac:BoundToken ] .`);
   });
 
@@ -102,7 +102,7 @@ describe('An LDP handler with an ABAC rule over how an identity was proven', ():
     await app.stop();
   });
 
-  it('grants when the identity is proven with a key-bound token.', async(): Promise<void> => {
+  it('allows when the identity is proven with a key-bound token.', async(): Promise<void> => {
     const accessToken = await requestToken(true);
     const res = await fetch(target, {
       headers: {

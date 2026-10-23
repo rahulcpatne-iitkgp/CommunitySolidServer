@@ -133,7 +133,7 @@ export const ABAC = createVocabulary(
   'Workday',
 
   // Rules
-  'grants',
+  'allow',
   'allOf',
   'anyOf',
   'noneOf',
