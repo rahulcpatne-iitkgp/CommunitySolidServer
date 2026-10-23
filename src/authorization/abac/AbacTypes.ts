@@ -1,10 +1,12 @@
 /**
  * The definition of a single attribute, as found in the `/.abac/definitions/` subtree.
  * `appliesTo` is the kind of entity it describes: a subject, a resource, or the environment of a request.
+ * `values` is its value space, which includes `defaultValue`.
  */
 export interface AttributeDefinition {
   iri: string;
   appliesTo: string;
+  values: Set<string>;
   defaultValue: string;
 }
 

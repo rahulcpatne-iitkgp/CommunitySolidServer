@@ -65,21 +65,27 @@ async function startServer(port: number, policy: string, variables: Record<strin
     await write(`${category}/note.txt`, 'data', 'text/plain');
   }
   await writeAbac('definitions/role', `
-    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+      abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`);
   await writeAbac('definitions/category', `
-    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Uncategorised .`);
+    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+      abac:value ex:Uncategorised, ex:HoursOnly, ex:InternalOnly, ex:ProofOnly ; abac:defaultValue ex:Uncategorised .`);
   await writeAbac('definitions/period', `
-    abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ; abac:defaultValue abac:OutOfHours .`);
+    abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+      abac:value abac:BusinessHours, abac:OutOfHours ; abac:defaultValue abac:OutOfHours .`);
   await writeAbac('definitions/network', `
-    abac:network a abac:AttributeDefinition ; abac:appliesTo abac:Environment ; abac:defaultValue abac:External .`);
+    abac:network a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+      abac:value abac:Internal, abac:External ; abac:defaultValue abac:External .`);
   await writeAbac('definitions/authMethod', `
-    abac:authMethod a abac:AttributeDefinition ;
-      abac:appliesTo abac:Environment ; abac:defaultValue abac:NoCredentials .`);
+    abac:authMethod a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+      abac:value abac:BoundToken, abac:BearerToken, abac:Unsecure, abac:NoCredentials ;
+      abac:defaultValue abac:NoCredentials .`);
   await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor .`);
-  await writeAbac('resources/categories', `
-    <${joinUrl(baseUrl, 'hours/')}> ex:category ex:HoursOnly .
-    <${joinUrl(baseUrl, 'network/')}> ex:category ex:InternalOnly .
-    <${joinUrl(baseUrl, 'proof/')}> ex:category ex:ProofOnly .`);
+  const categories = { hours: 'HoursOnly', network: 'InternalOnly', proof: 'ProofOnly' };
+  for (const [ folder, category ] of Object.entries(categories)) {
+    await writeAbac(`resources/localhost/${folder}`, `
+      <${joinUrl(baseUrl, folder, '/')}> ex:category ex:${category} .`);
+  }
   await writeAbac('rules/R001', `
     <#R001> a abac:Rule ; abac:grants acl:Read ;
       abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:HoursOnly ], [ abac:period abac:BusinessHours ] .`);

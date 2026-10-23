@@ -64,15 +64,23 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     }));
 
     await write(joinUrl(baseUrl, '.abac/definitions/role'), `${prefixes}
-      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor, ex:Nurse ; abac:defaultValue ex:None .`);
+    await write(joinUrl(baseUrl, '.abac/definitions/category'), `${prefixes}
+      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
+    // The whole server is labelled medical, its own namespaces included, so only the exclusions keep rules from them.
+    await write(joinUrl(baseUrl, '.abac/resources/localhost'), `${prefixes}
+      <${baseUrl}> ex:category ex:Medical .`);
     await write(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), `${prefixes}
       <${ALICE}> ex:role ex:Doctor .`);
     await write(joinUrl(baseUrl, '.abac/subjects/bob.example/profile/card'), `${prefixes}
       <${BOB}> ex:role ex:Nurse .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `${prefixes}
-      <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write ; abac:allOf [ ex:role ex:Doctor ] .`);
+      <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write ;
+        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
     await write(joinUrl(baseUrl, '.abac/rules/R002'), `${prefixes}
-      <#R002> a abac:Rule ; abac:grants acl:Control ; abac:allOf [ ex:role ex:Nurse ] .`);
+      <#R002> a abac:Rule ; abac:grants acl:Control ; abac:allOf [ ex:role ex:Nurse ], [ ex:category ex:Medical ] .`);
   });
 
   afterAll(async(): Promise<void> => {
@@ -114,5 +122,14 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
 
   it('cannot grant access to the ABAC store itself.', async(): Promise<void> => {
     await expect(send(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), ALICE)).resolves.toBe(403);
+  });
+
+  it('ignores a rule that does not condition on the resource.', async(): Promise<void> => {
+    await write(joinUrl(baseUrl, '.abac/rules/R003'), `${prefixes}
+      <#R003> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Nurse ] .`);
+    await write(joinUrl(baseUrl, '.abac/rules/R004'), `${prefixes}
+      <#R004> a abac:Rule ; abac:grants acl:Read ;
+        abac:allOf [ ex:role ex:Nurse ] ; abac:noneOf [ ex:category ex:Uncategorised ] .`);
+    await expect(send(target, BOB)).resolves.toBe(403);
   });
 });

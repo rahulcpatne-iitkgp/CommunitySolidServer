@@ -81,14 +81,21 @@ describe('An LDP handler with an ABAC rule over how an identity was proven', ():
     }
     await store.setRepresentation({ path: target }, new BasicRepresentation('patient note', 'text/plain'));
     await writeAbac('definitions/role', `
-      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`);
+    await writeAbac('definitions/category', `
+      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
     await writeAbac('definitions/authMethod', `
-      abac:authMethod a abac:AttributeDefinition ;
-        abac:appliesTo abac:Environment ; abac:defaultValue abac:NoCredentials .`);
+      abac:authMethod a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+        abac:value abac:BoundToken, abac:BearerToken, abac:Unsecure, abac:NoCredentials ;
+        abac:defaultValue abac:NoCredentials .`);
     await writeAbac('subjects/alice', `<${webId}> ex:role ex:Doctor .`);
+    await writeAbac('resources/localhost/records', `
+      <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`);
     await writeAbac('rules/R001', `
       <#R001> a abac:Rule ; abac:grants acl:Read ;
-        abac:allOf [ ex:role ex:Doctor ], [ abac:authMethod abac:BoundToken ] .`);
+        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ], [ abac:authMethod abac:BoundToken ] .`);
   });
 
   afterAll(async(): Promise<void> => {

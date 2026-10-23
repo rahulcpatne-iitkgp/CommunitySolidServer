@@ -4,8 +4,11 @@ import {
   buildAttributeVector,
   buildEnvironmentVector,
   getAttributeDefinitions,
+  getMirroredResource,
   getRules,
+  isWithin,
 } from '../../../../src/authorization/abac/AbacUtil';
+import type { AttributeDefinition } from '../../../../src/authorization/abac/AbacTypes';
 import type { Logger } from '../../../../src/logging/Logger';
 import { getLoggerFor } from '../../../../src/logging/LogUtil';
 import { ABAC } from '../../../../src/util/Vocabularies';
@@ -32,13 +35,21 @@ describe('AbacUtil', (): void => {
   }
 
   const definitions = parse(`
-    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .
-    ex:department a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:Unknown .
-    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Any .
-    ex:unscoped a abac:AttributeDefinition ; abac:defaultValue ex:Any .
-    ex:misscoped a abac:AttributeDefinition ; abac:appliesTo abac:Subjects ; abac:defaultValue ex:Any .
-    ex:undefaulted a abac:AttributeDefinition ; abac:appliesTo abac:Subject .
-    ex:ambiguous a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:A, ex:B .
+    ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+      abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .
+    ex:department a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+      abac:value ex:Unknown, ex:Cardiology, ex:Emergency, ex:Oncology ; abac:defaultValue ex:Unknown .
+    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+      abac:value ex:Any, ex:Medical ; abac:defaultValue ex:Any .
+    ex:unscoped a abac:AttributeDefinition ; abac:value ex:Any ; abac:defaultValue ex:Any .
+    ex:misscoped a abac:AttributeDefinition ; abac:appliesTo abac:Subjects ;
+      abac:value ex:Any ; abac:defaultValue ex:Any .
+    ex:undefaulted a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:value ex:Any .
+    ex:ambiguous a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+      abac:value ex:A, ex:B ; abac:defaultValue ex:A, ex:B .
+    ex:unvalued a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:Any .
+    ex:outside a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+      abac:value ex:A, ex:B ; abac:defaultValue ex:Any .
   `);
   const defined = [ ...getAttributeDefinitions(definitions) ];
 
@@ -56,15 +67,23 @@ describe('AbacUtil', (): void => {
   });
 
   describe('#getAttributeDefinitions', (): void => {
-    it('returns every definition with one known kind of entity and one default.', (): void => {
+    it('returns every definition with one known kind of entity and one default in its values.', (): void => {
+      function definition(name: string, appliesTo: string, values: string[]): AttributeDefinition {
+        return {
+          iri: `${ex}${name}`,
+          appliesTo,
+          values: new Set(values.map((value): string => `${ex}${value}`)),
+          defaultValue: `${ex}${values[0]}`,
+        };
+      }
       expect([ ...getAttributeDefinitions(definitions) ]).toEqual([
-        { iri: `${ex}role`, appliesTo: ABAC.Subject, defaultValue: `${ex}None` },
-        { iri: `${ex}department`, appliesTo: ABAC.Subject, defaultValue: `${ex}Unknown` },
-        { iri: `${ex}category`, appliesTo: ABAC.Resource, defaultValue: `${ex}Any` },
+        definition('role', ABAC.Subject, [ 'None', 'Doctor' ]),
+        definition('department', ABAC.Subject, [ 'Unknown', 'Cardiology', 'Emergency', 'Oncology' ]),
+        definition('category', ABAC.Resource, [ 'Any', 'Medical' ]),
       ]);
-      expect(logger.warn).toHaveBeenCalledTimes(4);
+      expect(logger.warn).toHaveBeenCalledTimes(6);
       expect(logger.warn).toHaveBeenLastCalledWith(expect.stringContaining(
-        `Skipping attribute definition ${ex}ambiguous`,
+        `Skipping attribute definition ${ex}outside`,
       ));
     });
 
@@ -135,28 +154,54 @@ describe('AbacUtil', (): void => {
       });
     });
 
-    it('leaves out an attribute that is assigned several values.', (): void => {
+    it('leaves out an attribute assigned several values, or a value outside its space.', (): void => {
       const assignments = parse(`
-        <${records}> ex:department ex:Cardiology .
+        <${records}> ex:department ex:Cardiology ; ex:category ex:Surgical .
         <${note}> ex:department ex:Emergency, ex:Oncology .
       `);
       expect(buildAttributeVector(defined, assignments, entities)).toEqual({
         [`${ex}role`]: `${ex}None`,
-        [`${ex}category`]: `${ex}Any`,
       });
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining(`${note} assigns ${ex}department several values`),
       );
+      expect(logger.warn).toHaveBeenCalledWith(
+        `${records} assigns ${ex}category ${ex}Surgical, which is not one of its values`,
+      );
+    });
+  });
+
+  describe('#getMirroredResource', (): void => {
+    it('returns the resource that a part of the resources subtree mirrors, by host and path.', (): void => {
+      const resources = `${baseUrl}.abac/resources/`;
+      expect(getMirroredResource(`${resources}example.com/records/`, resources)).toBe(`${baseUrl}records/`);
+      const local = 'http://localhost:3000/.abac/resources/';
+      expect(getMirroredResource(`${local}alice.localhost/notes`, local)).toBe('http://alice.localhost:3000/notes');
+      expect(getMirroredResource(`${local}localhost`, local)).toBe('http://localhost:3000');
+      expect(getMirroredResource(resources, resources)).toBeUndefined();
+      expect(getMirroredResource(`${baseUrl}.abac/rules/R001`, resources)).toBeUndefined();
+    });
+  });
+
+  describe('#isWithin', (): void => {
+    it('accepts the scope itself and what lies beneath it, at a path boundary.', (): void => {
+      const records = `${baseUrl}records`;
+      expect([ records, `${records}/`, `${records}/2026/note.ttl` ].map((path): boolean => isWithin(path, records)))
+        .toEqual([ true, true, true ]);
+      expect([ `${records}-2026/`, baseUrl ].map((path): boolean => isWithin(path, records))).toEqual([ false, false ]);
     });
   });
 
   describe('#buildEnvironmentVector', (): void => {
-    it('uses the resolved value where there is one, the default otherwise.', (): void => {
-      expect(buildEnvironmentVector(defined, { [`${ex}role`]: `${ex}Doctor` })).toEqual({
+    it('uses the resolved value where there is one in the space, the default otherwise.', (): void => {
+      const resolved = { [`${ex}role`]: `${ex}Doctor`, [`${ex}category`]: `${ex}Elsewhere` };
+      expect(buildEnvironmentVector(defined, resolved)).toEqual({
         [`${ex}role`]: `${ex}Doctor`,
         [`${ex}department`]: `${ex}Unknown`,
-        [`${ex}category`]: `${ex}Any`,
       });
+      expect(logger.warn).toHaveBeenCalledWith(
+        `The request has ${ex}category ${ex}Elsewhere, which is not one of its values`,
+      );
     });
   });
 });

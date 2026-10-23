@@ -12,6 +12,7 @@ const baseUrl = `http://localhost:${port}/`;
 const ADMIN = 'https://admin.example/profile/card#me';
 const ALICE = 'https://alice.example/profile/card#me';
 const BOB = 'https://bob.example/profile/card#me';
+const CAROL = 'https://carol.example/profile/card#me';
 
 const prefixes = `
 @prefix abac: <https://w3id.org/solid-abac#>.
@@ -61,12 +62,14 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
       await write(url, 'data', 'text/plain');
     }
     await writeAbac('definitions/role', `
-      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ; abac:defaultValue ex:None .`);
+      ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
+        abac:value ex:None, ex:Doctor, ex:Nurse ; abac:defaultValue ex:None .`);
     await writeAbac('definitions/category', `
-      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Uncategorised .`);
+      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Uncategorised, ex:Medical, ex:Administrative ; abac:defaultValue ex:Uncategorised .`);
     await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor ; ex:category ex:Medical .`);
     await writeAbac('subjects/bob.example/profile/card', `<${BOB}> ex:role ex:Nurse .`);
-    await writeAbac('resources/records', `
+    await writeAbac('resources/localhost/records', `
       <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical ; ex:role ex:Doctor .
       <${joinUrl(baseUrl, 'records/admin/')}> ex:category ex:Administrative .`);
     await writeAbac('rules/R001', `
@@ -100,10 +103,24 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
   it('resolves a newly defined attribute to its default on every existing resource.', async(): Promise<void> => {
     await expect(send(photo, BOB)).resolves.toBe(403);
     await writeAbac('definitions/sensitivity', `
-      ex:sensitivity a abac:AttributeDefinition ; abac:appliesTo abac:Resource ; abac:defaultValue ex:Internal .`);
+      ex:sensitivity a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Internal, ex:Confidential ; abac:defaultValue ex:Internal .`);
     await writeAbac('rules/R002', `
       <#R002> a abac:Rule ; abac:grants acl:Read ;
         abac:allOf [ ex:role ex:Nurse ], [ ex:sensitivity ex:Internal ] .`);
     await expect(send(photo, BOB)).resolves.toBe(200);
+  });
+
+  it('fails closed on a value outside the value space of its attribute.', async(): Promise<void> => {
+    await writeAbac('subjects/carol.example/profile/card', `<${CAROL}> ex:role ex:Surgeon .`);
+    await writeAbac('rules/R003', `
+      <#R003> a abac:Rule ; abac:grants acl:Write ;
+        abac:allOf [ ex:category ex:Administrative ] ; abac:noneOf [ ex:role ex:Nurse ] .`);
+    await writeAbac('rules/R004', `
+      <#R004> a abac:Rule ; abac:grants acl:Write ;
+        abac:allOf [ ex:category ex:Administrative ] ; abac:noneOf [ ex:role ex:Porter ] .`);
+    await expect(send(rota, ALICE, 'PUT', 'rota')).resolves.toBe(205);
+    await expect(send(rota, CAROL, 'PUT', 'rota')).resolves.toBe(403);
+    await expect(send(rota, BOB, 'PUT', 'rota')).resolves.toBe(403);
   });
 });
