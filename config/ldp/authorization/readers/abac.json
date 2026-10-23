@@ -3,12 +3,12 @@
   "@graph": [
     {
       "comment": [
-        "Evaluates the ABAC grants as one more allow beside the policies of the ACRs, so a policy denying a mode overrides them.",
+        "Shares the ABAC attribute context with owner ACP matchers and supplies catalogue grants where the owner is silent, so an owner denial overrides them.",
         "Being part of ACP's verdict, they create and delete only through the parent container, and never reach an ACR, as they cannot grant Control."
       ],
       "@id": "urn:solid-server:default:AcpReader",
       "@type": "AcpReader",
-      "grantReader": { "@id": "urn:solid-server:default:AbacGrantReader" }
+      "abacReader": { "@id": "urn:solid-server:default:AbacGrantReader" }
     },
     {
       "comment": "Determines which modes the ABAC rules grant, from the attributes of the requesting agent, the target resource and the request itself.",

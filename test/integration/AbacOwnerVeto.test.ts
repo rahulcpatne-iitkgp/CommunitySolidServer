@@ -100,6 +100,9 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     await write(joinUrl(baseUrl, '.abac/definitions/category'), `
       ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
         abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
+    await write(joinUrl(baseUrl, '.abac/definitions/authMethod'), `
+      abac:authMethod a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
+        abac:value abac:Unsecure, abac:NoCredentials ; abac:defaultValue abac:NoCredentials .`);
     await write(joinUrl(baseUrl, '.abac/subjects/doctors'), `
       <${ALICE}> ex:role ex:Doctor . <${CAROL}> ex:role ex:Doctor .`);
     // The owner's labels also claim the neighbour's records, which a document mirroring the owner's pod cannot label.
@@ -186,5 +189,59 @@ describe('An LDP handler whose ABAC grants a pod owner can veto', (): void => {
     await expect(send(`${note}.acr`, owner)).resolves.toBe(200);
     await expect(setAcr(note)).resolves.toBe(205);
     await expect(send(note, owner)).resolves.toBe(200);
+  });
+
+  /** Writes an owner policy with custom ACP matcher predicates over the public ABAC schema. */
+  async function setAttributeAcr(resource: string, modes: string, conditions: string, extra = ''): Promise<number> {
+    return send(`${resource}.acr`, owner, 'PUT', `${prefixes}
+      @prefix acp: <http://www.w3.org/ns/solid/acp#>.
+      [] acp:resource <${resource}> ; acp:accessControl [ acp:apply [
+        ${modes} ; acp:allOf [ ${conditions} ] ${extra}
+      ] ] .`);
+  }
+
+  it('lets the owner allow subject, resource and environment attributes ' +
+    'without seeing subject assignments.', async(): Promise<void> => {
+    const shared = joinUrl(pod, 'shared.ttl');
+    expect([ 201, 205 ]).toContain(await setAcr(records));
+    const conditions = 'ex:role ex:Doctor ; ex:category ex:Uncategorised ; abac:authMethod abac:Unsecure';
+    expect([ 201, 205 ]).toContain(await setAttributeAcr(shared, 'acp:allow acl:Read', conditions));
+    await expect(send(shared, ALICE)).resolves.toBe(200);
+    await expect(send(shared, CAROL)).resolves.toBe(200);
+    await expect(send(shared, BOB)).resolves.toBe(403);
+    await expect(send(joinUrl(baseUrl, '.abac/definitions/role'), owner)).resolves.toBe(200);
+    await expect(send(joinUrl(baseUrl, '.abac/subjects/doctors'), owner)).resolves.toBe(403);
+  });
+
+  it('lets an attribute-based owner denial veto the catalogue, ' +
+    'including a mixed identity matcher.', async(): Promise<void> => {
+    expect([ 201, 205 ]).toContain(await setAcr(records));
+    expect([ 201, 205 ]).toContain(await setAttributeAcr(note, 'acp:deny acl:Read', 'ex:role ex:Doctor'));
+    await expect(send(note, ALICE)).resolves.toBe(403);
+    await expect(send(note, CAROL)).resolves.toBe(403);
+    await expect(send(note, ALICE, 'PUT', record)).resolves.toBe(205);
+
+    const conditions = `acp:agent <${ALICE}> ; ex:role ex:Doctor`;
+    expect([ 201, 205 ]).toContain(await setAttributeAcr(note, 'acp:deny acl:Read', conditions));
+    await expect(send(note, ALICE)).resolves.toBe(403);
+    await expect(send(note, CAROL)).resolves.toBe(200);
+  });
+
+  it('does not let an undefined noneOf attribute enable an allow or suppress a denial.', async(): Promise<void> => {
+    const shared = joinUrl(pod, 'shared.ttl');
+    const exclusion = '; acp:noneOf [ ex:unknown ex:Unknown ]';
+    const allowStatus = await setAttributeAcr(shared, 'acp:allow acl:Read', 'acp:agent acp:PublicAgent', exclusion);
+    expect([ 201, 205 ]).toContain(allowStatus);
+    await expect(send(shared, BOB)).resolves.toBe(403);
+    const denyStatus = await setAttributeAcr(note, 'acp:deny acl:Read', 'acp:agent acp:PublicAgent', exclusion);
+    expect([ 201, 205 ]).toContain(denyStatus);
+    await expect(send(note, ALICE)).resolves.toBe(403);
+  });
+
+  it('allows the owner to delegate Control through an attribute rule.', async(): Promise<void> => {
+    const shared = joinUrl(pod, 'shared.ttl');
+    expect([ 201, 205 ]).toContain(await setAttributeAcr(shared, 'acp:allow acl:Control', 'ex:role ex:Doctor'));
+    await expect(send(`${shared}.acr`, ALICE)).resolves.toBe(200);
+    await expect(send(`${shared}.acr`, BOB)).resolves.toBe(403);
   });
 });

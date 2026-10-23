@@ -87,7 +87,7 @@ describe('An AbacGrantReader', (): void => {
   let requestedModes: AccessMap;
 
   function createReader(
-    rules: Store,
+    rules: Store | Error,
     definitionData = definitions,
     identifierStrategy: IdentifierStrategy = new SingleRootIdentifierStrategy(baseUrl),
   ): AbacGrantReader {
@@ -95,7 +95,12 @@ describe('An AbacGrantReader', (): void => {
       readDefinitions: jest.fn().mockResolvedValue(definitionData),
       readSubjectAttributes: jest.fn().mockResolvedValue(subjects),
       readResourceAttributes: jest.fn().mockResolvedValue(resources),
-      readRules: jest.fn().mockResolvedValue(rules),
+      readRules: jest.fn().mockImplementation(async(): Promise<Store> => {
+        if (rules instanceof Error) {
+          throw rules;
+        }
+        return rules;
+      }),
     } satisfies Partial<AbacDataLoader> as any;
     const resolver = new EnvironmentAttributeResolver('09:00', '17:00', [ '^127\\.' ]);
     return new AbacGrantReader(loader, identifierStrategy, resolver, baseUrl, [ '^/\\..*' ]);
@@ -178,6 +183,23 @@ describe('An AbacGrantReader', (): void => {
   it('has no opinion on a request it cannot identify an agent for.', async(): Promise<void> => {
     const result = await createReader(matching).handle({ credentials: {}, requestedModes });
     compareMaps(result, noGrants);
+  });
+
+  it('still prepares resource attributes for an anonymous owner matcher, ' +
+    'without catalogue grants.', async(): Promise<void> => {
+    const { context, grants } = await createReader(matching).prepare({ credentials: {}, requestedModes });
+    expect(context.vectors.get(target)).toEqual({ 'http://example.org/hospital#category':
+      'http://example.org/hospital#Medical' });
+    compareMaps(grants, noGrants);
+  });
+
+  it('keeps the attribute context when the catalogue is unreadable.', async(): Promise<void> => {
+    const { context, grants } = await createReader(new Error('unavailable'))
+      .prepare({ credentials, requestedModes });
+    expect(context.vectors.get(target)?.['http://example.org/hospital#role'])
+      .toBe('http://example.org/hospital#Doctor');
+    compareMaps(grants, noGrants);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('unavailable'));
   });
 
   it('never grants anything on an excluded or off-server resource.', async(): Promise<void> => {

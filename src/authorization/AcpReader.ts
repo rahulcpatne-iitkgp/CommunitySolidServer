@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import type { IAccessControlledResource, IAccessMode, IContext, IPolicy } from '@solid/access-control-policy';
+import type { IAccessControlledResource, IContext, IPolicy } from '@solid/access-control-policy';
 import { applyPolicy } from '@solid/access-control-policy';
 import type { Store } from 'n3';
 import type { Credentials } from '../authentication/Credentials';
@@ -17,7 +17,11 @@ import { getDefault } from '../util/map/MapUtil';
 import { readableToQuads } from '../util/StreamUtil';
 import { ACL } from '../util/Vocabularies';
 import { getAccessControlledResources } from './AcpUtil';
+import type { AbacRequestContext } from './abac/AbacContextBuilder';
+import type { AbacGrantReader } from './abac/AbacGrantReader';
 import type { GrantMap, GrantReader } from './GrantReader';
+import type { AttributeMatcher } from './PolicyEvaluator';
+import { evaluatePolicy } from './PolicyEvaluator';
 import type { PermissionReaderInput } from './PermissionReader';
 import { PermissionReader } from './PermissionReader';
 import type { AclPermissionSet } from './permissions/AclPermissionSet';
@@ -41,6 +45,7 @@ const grantableModes: ReadonlySet<string> = new Set([ ACL.Read, ACL.Write, ACL.A
  *
  * Access granted outside the ACRs, by an optional {@link GrantReader}, is evaluated as one more allow
  * beside their policies, so a policy that denies a mode overrides it as it would any other allow.
+ * An optional {@link AbacGrantReader} also shares its resolved attribute context with ACP matchers.
  * Such access never includes Control: that is control over the ACRs themselves,
  * which would let it rewrite the very policies that override it.
  *
@@ -53,29 +58,62 @@ export class AcpReader extends PermissionReader {
   private readonly acrStore: ResourceStore;
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly grantReader?: GrantReader;
+  private readonly abacReader?: AbacGrantReader;
 
   public constructor(
     acrStrategy: AuxiliaryStrategy,
     acrStore: ResourceStore,
     identifierStrategy: IdentifierStrategy,
     grantReader?: GrantReader,
+    abacReader?: AbacGrantReader,
   ) {
     super();
     this.acrStrategy = acrStrategy;
     this.acrStore = acrStore;
     this.identifierStrategy = identifierStrategy;
     this.grantReader = grantReader;
+    this.abacReader = abacReader;
   }
 
   public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<PermissionMap> {
     this.logger.debug(`Retrieving permissions of ${JSON.stringify(credentials)}`);
-    const grants = await this.readGrants({ credentials, requestedModes });
     const resourceCache = new IdentifierMap<IAccessControlledResource[]>();
+    const policiesByTarget = new IdentifierMap<IPolicy[]>();
     const permissionMap: PermissionMap = new IdentifierMap();
 
     // Resolves the targets sequentially so the `resourceCache` can be filled and reused
     for (const target of requestedModes.distinctKeys()) {
-      permissionMap.set(target, await this.extractPermissions(target, credentials, resourceCache, grants.get(target)));
+      policiesByTarget.set(target, await this.getPolicies(target, resourceCache));
+    }
+
+    let abac: Awaited<ReturnType<AbacGrantReader['prepare']>> | undefined;
+    if (this.abacReader) {
+      try {
+        abac = await this.abacReader.prepare({ credentials, requestedModes });
+      } catch (error: unknown) {
+        const hasAttributePolicy = [ ...policiesByTarget.values() ].some((policies): boolean =>
+          policies.some((policy): boolean => [ ...policy.allOf, ...policy.anyOf, ...policy.noneOf ]
+            .some((matcher): boolean => Boolean((matcher as AttributeMatcher).attributes?.length))));
+        if (hasAttributePolicy) {
+          throw new InternalServerError(`Cannot evaluate owner attribute policies: ${createErrorMessage(error)}`, {
+            cause: error,
+          });
+        }
+        this.logger.warn(
+          `Ignoring organisational grants whose attributes could not be read: ${createErrorMessage(error)}`,
+        );
+      }
+    }
+    const grants = await this.readGrants({ credentials, requestedModes });
+    for (const target of requestedModes.distinctKeys()) {
+      const granted = new Set([ ...grants.get(target) ?? [], ...abac?.grants.get(target) ?? [] ]);
+      permissionMap.set(target, this.extractPermissions(
+        target,
+        credentials,
+        policiesByTarget.get(target)!,
+        granted,
+        abac?.context,
+      ));
     }
     return permissionMap;
   }
@@ -104,35 +142,40 @@ export class AcpReader extends PermissionReader {
    *
    * @param target - Target to generate permissions for.
    * @param credentials - Credentials that are trying to access the resource.
-   * @param resourceCache - Cache used to store ACR data.
+   * @param policies - Effective policies from the target and its ancestors.
    * @param granted - Access modes granted on the target outside the ACRs.
    */
-  private async extractPermissions(
+  private extractPermissions(
     target: ResourceIdentifier,
     credentials: Credentials,
-    resourceCache: IdentifierMap<IAccessControlledResource[]>,
-    granted: ReadonlySet<string> = new Set(),
-  ): Promise<PermissionSet> {
+    policies: IPolicy[],
+    granted: ReadonlySet<string>,
+    abac?: AbacRequestContext,
+  ): PermissionSet {
     const context = this.createContext(target, credentials);
-    const policies: IPolicy[] = [];
 
-    // Extract all the policies relevant for the target
-    const identifiers = this.getAncestorIdentifiers(target);
-    for (const identifier of identifiers) {
-      const acrs = await getDefault(resourceCache, identifier, async(): Promise<IAccessControlledResource[]> =>
-        [ ...getAccessControlledResources(await this.readAcrData(identifier)) ]);
-      const size = policies.length;
-      policies.push(...this.getEffectivePolicies(target, acrs));
-      this.logger.debug(`Found ${policies.length - size} policies relevant for ${target.path} in ${identifier.path}`);
+    const denied = new Set<string>();
+    const ownerAllowed = new Set<string>();
+    for (const policy of policies) {
+      const result = abac ? evaluatePolicy(policy, context, abac.vectors.get(target)!, abac.definitions) : undefined;
+      const applies = result ? undefined : applyPolicy(policy, context);
+      const { definite, possible } = result ?? { definite: applies, possible: applies };
+      if (definite) {
+        for (const mode of policy.allow) {
+          ownerAllowed.add(mode);
+        }
+      }
+      if (possible) {
+        for (const mode of policy.deny) {
+          denied.add(mode);
+        }
+      }
     }
-
-    // As in ACP, a mode is allowed if a policy that applies allows it and none denies it.
-    // Access granted outside the ACRs counts as one more allow, so the same denials override it.
-    const applying = policies.filter((policy): boolean => applyPolicy(policy, context));
-    const denied = new Set<string>(applying.flatMap((policy): IAccessMode[] => [ ...policy.deny ]));
-    const grants = [ ...granted ].filter((mode): boolean => grantableModes.has(mode));
-    const allowed = [ ...applying.flatMap((policy): IAccessMode[] => [ ...policy.allow ]), ...grants ];
-    const overridden = grants.filter((mode): boolean => denied.has(mode));
+    // The catalogue is consulted only where the owner's policies are silent on that ACL mode.
+    const grants = [ ...granted ].filter((mode): boolean => grantableModes.has(mode) &&
+      !ownerAllowed.has(mode) && !denied.has(mode));
+    const allowed = [ ...ownerAllowed, ...grants ];
+    const overridden = [ ...granted ].filter((mode): boolean => denied.has(mode));
     if (overridden.length > 0) {
       this.logger.debug(
         `ACP denies ${overridden.join(', ')} on ${target.path}, overriding access granted outside the ACRs`,
@@ -148,6 +191,22 @@ export class AcpReader extends PermissionReader {
       }
     }
     return permissionSet;
+  }
+
+  /** Extracts the effective policies once per target, reusing each ancestor's parsed ACR. */
+  private async getPolicies(
+    target: ResourceIdentifier,
+    resourceCache: IdentifierMap<IAccessControlledResource[]>,
+  ): Promise<IPolicy[]> {
+    const policies: IPolicy[] = [];
+    for (const identifier of this.getAncestorIdentifiers(target)) {
+      const acrs = await getDefault(resourceCache, identifier, async(): Promise<IAccessControlledResource[]> =>
+        [ ...getAccessControlledResources(await this.readAcrData(identifier)) ]);
+      const size = policies.length;
+      policies.push(...this.getEffectivePolicies(target, acrs));
+      this.logger.debug(`Found ${policies.length - size} policies relevant for ${target.path} in ${identifier.path}`);
+    }
+    return policies;
   }
 
   /**

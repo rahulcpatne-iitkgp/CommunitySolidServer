@@ -11,6 +11,7 @@ export * from './authentication/UnsecureWebIdExtractor';
 
 // Authorization/ABAC
 export * from './authorization/abac/AbacDataLoader';
+export * from './authorization/abac/AbacContextBuilder';
 export * from './authorization/abac/AbacGrantReader';
 export * from './authorization/abac/AbacStoreReader';
 export * from './authorization/abac/AbacTypes';
@@ -38,6 +39,7 @@ export * from './authorization/permissions/SparqlUpdateModesExtractor';
 // Authorization
 export * from './authorization/AcpReader';
 export * from './authorization/AcpUtil';
+export * from './authorization/PolicyEvaluator';
 export * from './authorization/AllStaticReader';
 export * from './authorization/Authorizer';
 export * from './authorization/AuxiliaryReader';

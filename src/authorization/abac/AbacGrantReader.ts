@@ -1,8 +1,6 @@
-import type { NamedNode } from '@rdfjs/types';
-import { DataFactory } from 'n3';
-import { isRequestEnvironment } from '../../authentication/EnvironmentCredentialsExtractor';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../../logging/LogUtil';
+import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import type { IdentifierStrategy } from '../../util/identifiers/IdentifierStrategy';
 import { IdentifierSetMultiMap } from '../../util/map/IdentifierMap';
 import { ensureTrailingSlash, trimTrailingSlashes } from '../../util/PathUtil';
@@ -11,8 +9,10 @@ import type { GrantMap } from '../GrantReader';
 import { GrantReader } from '../GrantReader';
 import type { PermissionReaderInput } from '../PermissionReader';
 import type { AbacDataLoader } from './AbacDataLoader';
-import type { AttributeCondition, AttributeDefinition, AttributeVector, Rule } from './AbacTypes';
-import { buildAttributeVector, buildEnvironmentVector, getAttributeDefinitions, getRules } from './AbacUtil';
+import type { AbacRequestContext } from './AbacContextBuilder';
+import { AbacContextBuilder } from './AbacContextBuilder';
+import type { AttributeCondition, AttributeDefinition, Rule } from './AbacTypes';
+import { getRules } from './AbacUtil';
 import type { EnvironmentAttributeResolver } from './EnvironmentAttributeResolver';
 import { evaluateRules } from './RuleEvaluator';
 
@@ -35,7 +35,7 @@ export class AbacGrantReader extends GrantReader {
 
   private readonly loader: AbacDataLoader;
   private readonly identifierStrategy: IdentifierStrategy;
-  private readonly environmentResolver: EnvironmentAttributeResolver;
+  private readonly contextBuilder: AbacContextBuilder;
   private readonly baseUrl: string;
   private readonly excludePaths: RegExp[];
 
@@ -57,56 +57,49 @@ export class AbacGrantReader extends GrantReader {
     super();
     this.loader = loader;
     this.identifierStrategy = identifierStrategy;
-    this.environmentResolver = environmentResolver;
+    this.contextBuilder = new AbacContextBuilder(loader, identifierStrategy, environmentResolver);
     this.baseUrl = ensureTrailingSlash(baseUrl);
     this.excludePaths = excludePaths.map((path): RegExp => new RegExp(path, 'u'));
   }
 
-  public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<GrantMap> {
-    const result: GrantMap = new IdentifierSetMultiMap();
+  public async handle(input: PermissionReaderInput): Promise<GrantMap> {
+    if (!input.credentials.agent?.webId) {
+      this.logger.debug(`No WebID found, ABAC has no opinion on this request.`);
+      return new IdentifierSetMultiMap();
+    }
+    return (await this.prepare(input)).grants;
+  }
 
+  /** Shares the request's resolved attributes with the owner channel, without exposing the assignments over HTTP. */
+  public async prepare({ credentials, requestedModes }: PermissionReaderInput):
+  Promise<{ context: AbacRequestContext; grants: GrantMap }> {
+    const context = await this.contextBuilder.build(credentials, requestedModes.distinctKeys());
+    const grants: GrantMap = new IdentifierSetMultiMap();
     const webId = credentials.agent?.webId;
     if (!webId) {
-      this.logger.debug(`No WebID found, ABAC has no opinion on this request.`);
-      return result;
+      return { context, grants };
     }
-
-    const [ definitionData, subjectData, resourceData, ruleData ] = await Promise.all([
-      this.loader.readDefinitions(),
-      this.loader.readSubjectAttributes(),
-      this.loader.readResourceAttributes(),
-      this.loader.readRules(),
-    ]);
-    const definitions = [ ...getAttributeDefinitions(definitionData) ];
-    const resourceDefinitions = definitions.filter(({ appliesTo }): boolean => appliesTo === ABAC.Resource);
-    const subjectVector = buildAttributeVector(
-      definitions.filter(({ appliesTo }): boolean => appliesTo === ABAC.Subject),
-      subjectData,
-      [ DataFactory.namedNode(webId) ],
-    );
-    const environmentVector = this.resolveEnvironment(
-      definitions.filter(({ appliesTo }): boolean => appliesTo === ABAC.Environment),
-      credentials.environment,
-    );
-    const rules = this.getValidRules(getRules(ruleData), definitions);
+    let rules: Rule[];
+    try {
+      rules = this.getValidRules(getRules(await this.loader.readRules()), [ ...context.definitions.values() ]);
+    } catch (error: unknown) {
+      this.logger.warn(`Ignoring organisational grants whose rules could not be read: ${createErrorMessage(error)}`);
+      return { context, grants };
+    }
 
     for (const target of requestedModes.distinctKeys()) {
       if (this.isExcluded(target)) {
         this.logger.debug(`ABAC will not grant anything on the excluded resource ${target.path}`);
         continue;
       }
-      const vector = {
-        ...subjectVector,
-        ...environmentVector,
-        ...buildAttributeVector(resourceDefinitions, resourceData, this.getAncestors(target)),
-      };
+      const vector = context.vectors.get(target)!;
       const modes = evaluateRules(rules, vector);
       this.logger.debug(
         `ABAC grants ${webId} [${[ ...modes ].join(', ')}] on ${target.path}: ${JSON.stringify(vector)}`,
       );
-      result.set(target, modes);
+      grants.set(target, modes);
     }
-    return result;
+    return { context, grants };
   }
 
   /**
@@ -166,34 +159,5 @@ export class AbacGrantReader extends GrantReader {
     }
     const relative = identifier.path.slice(trimTrailingSlashes(this.baseUrl).length);
     return this.excludePaths.some((regex): boolean => regex.test(relative));
-  }
-
-  /**
-   * Values the environment attributes against the circumstances of the request.
-   * Falls back to their declared defaults when nothing recorded those circumstances,
-   * which means the extractor that records them is missing from the configuration.
-   */
-  private resolveEnvironment(definitions: AttributeDefinition[], environment: unknown): AttributeVector {
-    if (definitions.length === 0) {
-      return {};
-    }
-    if (!isRequestEnvironment(environment)) {
-      this.logger.warn(`No request context was recorded, so environment attributes fall back to their defaults.`);
-      return buildEnvironmentVector(definitions, {});
-    }
-    return buildEnvironmentVector(definitions, this.environmentResolver.resolve(environment));
-  }
-
-  /**
-   * The given resource followed by all its ancestors, most specific first.
-   * Only paths are compared, so a resource that does not exist yet resolves against its would-be ancestors.
-   */
-  private getAncestors(identifier: ResourceIdentifier): NamedNode[] {
-    const ancestors = [ DataFactory.namedNode(identifier.path) ];
-    while (!this.identifierStrategy.isRootContainer(identifier)) {
-      identifier = this.identifierStrategy.getParentContainer(identifier);
-      ancestors.push(DataFactory.namedNode(identifier.path));
-    }
-    return ancestors;
   }
 }
