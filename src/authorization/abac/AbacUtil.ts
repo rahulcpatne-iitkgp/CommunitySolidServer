@@ -76,7 +76,7 @@ export function* getRules(data: Store): Iterable<Rule> {
   for (const quad of data.getQuads(null, RDF.terms.type, ABAC.terms.Rule, null)) {
     yield {
       iri: quad.subject.value,
-      grants: new Set(getObjectValues(data, quad.subject, ABAC.terms.grants)),
+      allow: new Set(getObjectValues(data, quad.subject, ABAC.terms.allow)),
       allOf: getConditionList(data, quad.subject, ABAC.terms.allOf),
       anyOf: getConditionList(data, quad.subject, ABAC.terms.anyOf),
       noneOf: getConditionList(data, quad.subject, ABAC.terms.noneOf),

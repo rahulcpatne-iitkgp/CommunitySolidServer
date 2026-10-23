@@ -2,7 +2,8 @@ import { Parser } from 'n3';
 import type { Quad } from '@rdfjs/types';
 import type { Credentials } from '../../../src/authentication/Credentials';
 import { AcpReader } from '../../../src/authorization/AcpReader';
-import type { GrantReader } from '../../../src/authorization/GrantReader';
+import type { AbacAllowedModesReader } from '../../../src/authorization/abac/AbacAllowedModesReader';
+import type { AllowedModesReader } from '../../../src/authorization/AllowedModesReader';
 import { AccessMode } from '../../../src/authorization/permissions/Permissions';
 import type { AuxiliaryStrategy } from '../../../src/http/auxiliary/AuxiliaryStrategy';
 import { BasicRepresentation } from '../../../src/http/representation/BasicRepresentation';
@@ -204,7 +205,8 @@ describe('An AcpReader', (): void => {
     compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
   });
 
-  it('adds outside grants, other than Control, unless an applying policy denies that mode.', async(): Promise<void> => {
+  it('adds outside allowed modes, other than Control, ' +
+    'unless an applying policy denies them.', async(): Promise<void> => {
     const alice = 'http://example.com/alice#me';
     const target = { path: joinUrl(baseUrl, 'foo') };
     credentials = { agent: { webId: alice }};
@@ -219,13 +221,13 @@ describe('An AcpReader', (): void => {
         acp:deny acl:Write;
         acp:allOf [ acp:agent <http://example.com/bob#me> ].
     `, baseUrl);
-    const grantReader: jest.Mocked<GrantReader> = {
+    const allowedModesReader: jest.Mocked<AllowedModesReader> = {
       handleSafe: jest.fn().mockResolvedValue(new IdentifierSetMultiMap([
         [{ path: baseUrl }, new Set([ ACL.Read, 'http://example.com/#Teleport', 'constructor' ]) ],
         [ target, new Set([ ACL.Read, ACL.Write, ACL.Control ]) ],
       ])),
     } as any;
-    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, grantReader);
+    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, allowedModesReader);
     const requestedModes = new IdentifierSetMultiMap([
       [{ path: baseUrl }, AccessMode.read ],
       [ target, AccessMode.read ],
@@ -235,10 +237,10 @@ describe('An AcpReader', (): void => {
       [ target, { append: true, write: true }],
     ]);
     compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
-    expect(grantReader.handleSafe).toHaveBeenLastCalledWith({ credentials, requestedModes });
+    expect(allowedModesReader.handleSafe).toHaveBeenLastCalledWith({ credentials, requestedModes });
   });
 
-  it('ignores grants it cannot determine, but not ACRs it cannot read.', async(): Promise<void> => {
+  it('ignores outside allowed modes it cannot determine, but not ACRs it cannot read.', async(): Promise<void> => {
     dataMap[baseUrl] = toQuads(`
       []
         acp:resource <./>;
@@ -248,16 +250,71 @@ describe('An AcpReader', (): void => {
         acp:allOf _:matcher.
       _:matcher acp:agent acp:PublicAgent.
     `, baseUrl);
-    const grantReader: jest.Mocked<GrantReader> = {
+    const allowedModesReader: jest.Mocked<AllowedModesReader> = {
       handleSafe: jest.fn().mockRejectedValue(new Error('unreachable')),
     } as any;
-    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, grantReader);
+    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, allowedModesReader);
     const requestedModes = new IdentifierSetMultiMap([[{ path: baseUrl }, AccessMode.read ]]);
     const expectedPermissions = new IdentifierMap([[{ path: baseUrl }, { read: true }]]);
     compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
 
-    grantReader.handleSafe.mockResolvedValueOnce(new IdentifierSetMultiMap([[{ path: baseUrl }, ACL.Write ]]));
+    allowedModesReader.handleSafe.mockResolvedValueOnce(
+      new IdentifierSetMultiMap<string>([[{ path: baseUrl }, ACL.Write ]]),
+    );
     acrStore.getRepresentation.mockRejectedValueOnce(new Error('bad request'));
     await expect(acpReader.handle({ credentials, requestedModes })).rejects.toThrow('bad request');
+  });
+
+  it('shares one attribute context across owner policies and catalogue rules.', async(): Promise<void> => {
+    const role = 'http://example.org/role';
+    const doctor = 'http://example.org/Doctor';
+    const target = { path: joinUrl(baseUrl, 'record') };
+    credentials = { agent: { webId: 'http://example.org/alice#me' }};
+    dataMap[target.path] = toQuads(`
+      [] acp:resource <./record>; acp:accessControl [ acp:apply [
+        acp:allow acl:Write; acp:deny acl:Read;
+        acp:allOf [ <${role}> <${doctor}> ]
+      ]] .
+    `, target.path);
+    const requestedModes = new IdentifierSetMultiMap([[ target, AccessMode.read ]]);
+    const vector = new IdentifierMap([[ target, { [role]: doctor }]]);
+    const abacAllowedModesReader = { prepare: jest.fn().mockResolvedValue({
+      context: { definitions: new Map([[ role, {
+        iri: role,
+        appliesTo: 'Subject',
+        values: new Set([ doctor ]),
+        defaultValue: doctor,
+      }]]), vectors: vector },
+      allowedModes: new IdentifierSetMultiMap([[ target, ACL.Read ]]),
+    }) } as unknown as AbacAllowedModesReader;
+    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, undefined, abacAllowedModesReader);
+    const expected = new IdentifierMap([[ target, { append: true, write: true }]]);
+    compareMaps(await acpReader.handle({ credentials, requestedModes }), expected);
+    expect(abacAllowedModesReader.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an attribute-store outage for owner attribute policies, ' +
+    'but preserves identity-only ACP.', async(): Promise<void> => {
+    const target = { path: joinUrl(baseUrl, 'record') };
+    const requestedModes = new IdentifierSetMultiMap([[ target, AccessMode.read ]]);
+    const abacAllowedModesReader = {
+      prepare: jest.fn().mockRejectedValue(new Error('store unavailable')),
+    } as unknown as AbacAllowedModesReader;
+    acpReader = new AcpReader(acrStrategy, acrStore, identifierStrategy, undefined, abacAllowedModesReader);
+    dataMap[target.path] = toQuads(`
+        [] acp:resource <./record>; acp:accessControl [ acp:apply [
+          acp:allow acl:Read; acp:allOf [ <http://example.org/role> <http://example.org/Doctor> ]
+        ]] .
+      `, target.path);
+    await expect(acpReader.handle({ credentials, requestedModes }))
+      .rejects.toThrow('Cannot evaluate owner attribute policies: store unavailable');
+
+    dataMap[target.path] = toQuads(`
+        [] acp:resource <./record>; acp:accessControl [ acp:apply [
+          acp:allow acl:Read; acp:allOf [ acp:agent acp:PublicAgent ]
+        ]] .
+      `, target.path);
+    const expected = new IdentifierMap([[ target, { read: true }]]);
+    compareMaps(await acpReader.handle({ credentials, requestedModes }), expected);
   });
 });

@@ -3,12 +3,15 @@ import type {
   IAccessControlledResource,
   IAccessControlResource,
   IAccessMode,
-  IMatcher,
   IPolicy,
 } from '@solid/access-control-policy';
 import type { Store } from 'n3';
 import type { NamedNode, Term } from '@rdfjs/types';
-import { ACP } from '../util/Vocabularies';
+import { ACP, RDF } from '../util/Vocabularies';
+import type { AttributeCondition } from './abac/AbacTypes';
+import type { AttributeMatcher } from './PolicyEvaluator';
+
+const builtInPredicates: ReadonlySet<string> = new Set([ ACP.agent, ACP.client, ACP.issuer, ACP.vc, RDF.type ]);
 
 /**
  * Returns all objects found using the given subject and predicate, mapped with the given function.
@@ -31,13 +34,22 @@ function getObjectValues(data: Store, subject: Term, predicate: NamedNode): stri
  * @param data - Dataset to look in.
  * @param matcher - Identifier of the matcher.
  */
-export function getMatcher(data: Store, matcher: Term): IMatcher {
+export function getMatcher(data: Store, matcher: Term): AttributeMatcher {
+  const custom = new Map<string, string[]>();
+  for (const quad of data.getQuads(matcher, null, null, null)) {
+    if (!builtInPredicates.has(quad.predicate.value)) {
+      custom.set(quad.predicate.value, [ ...custom.get(quad.predicate.value) ?? [], quad.object.value ]);
+    }
+  }
+  const attributes: AttributeCondition[] = [ ...custom ].map(([ attribute, values ]): AttributeCondition =>
+    ({ attribute, values }));
   return {
     iri: matcher.value,
     agent: getObjectValues(data, matcher, ACP.terms.agent),
     client: getObjectValues(data, matcher, ACP.terms.client),
     issuer: getObjectValues(data, matcher, ACP.terms.issuer),
     vc: getObjectValues(data, matcher, ACP.terms.vc),
+    ...attributes.length > 0 ? { attributes } : {},
   };
 }
 

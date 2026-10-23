@@ -36,6 +36,22 @@ describe('AcpUtil', (): void => {
   `));
 
   describe('#getMatcher', (): void => {
+    it('keeps custom matcher predicates and their alternative values beside built-ins.', (): void => {
+      const custom = new Store(new Parser({ format: 'Turtle', baseIRI: baseUrl }).parse(`
+        @prefix acp: <http://www.w3.org/ns/solid/acp#>.
+        @prefix ex: <http://example.com/>.
+        ex:custom a acp:Matcher ; acp:agent ex:alice ; ex:role ex:Doctor, ex:Nurse .
+      `));
+      expect(getMatcher(custom, namedNode(`${baseUrl}custom`))).toEqual({
+        iri: `${baseUrl}custom`,
+        agent: [ `${baseUrl}alice` ],
+        client: [],
+        issuer: [],
+        vc: [],
+        attributes: [{ attribute: `${baseUrl}role`, values: [ `${baseUrl}Doctor`, `${baseUrl}Nurse` ]}],
+      });
+    });
+
     it('returns the relevant matcher.', async(): Promise<void> => {
       expect(getMatcher(data, namedNode(`${baseUrl}matcher`))).toEqual({
         iri: joinUrl(baseUrl, 'matcher'),

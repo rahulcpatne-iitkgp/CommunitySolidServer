@@ -31,7 +31,7 @@ async function send(url: string, webId?: string, method = 'GET', turtle?: string
   return (await fetch(url, { method, headers, body: turtle })).status;
 }
 
-describe('An LDP handler with the grant-only ABAC layer', (): void => {
+describe('An LDP handler with the allow-only ABAC layer', (): void => {
   let app: App;
   let store: ResourceStore;
 
@@ -51,7 +51,7 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     ({ app, store } = instances);
     await app.start();
 
-    // `target` has no ACR, so only the ABAC layer can grant read on it.
+    // `target` has no ACR, so only the ABAC layer can allow read on it.
     await write(target, 'patient note', 'text/plain');
     await write(bobsResource, 'readable by bob', 'text/plain');
     const acpHelper = new AcpHelper(store);
@@ -66,28 +66,28 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     await write(joinUrl(baseUrl, '.abac/definitions/role'), `${prefixes}
       ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
         abac:value ex:None, ex:Doctor, ex:Nurse ; abac:defaultValue ex:None .`);
-    await write(joinUrl(baseUrl, '.abac/definitions/category'), `${prefixes}
-      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
+    await write(joinUrl(baseUrl, '.abac/definitions/fileType'), `${prefixes}
+      ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Unspecified, ex:Medical ; abac:defaultValue ex:Unspecified .`);
     // The whole server is labelled medical, its own namespaces included, so only the exclusions keep rules from them.
     await write(joinUrl(baseUrl, '.abac/resources/localhost'), `${prefixes}
-      <${baseUrl}> ex:category ex:Medical .`);
+      <${baseUrl}> ex:fileType ex:Medical .`);
     await write(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), `${prefixes}
       <${ALICE}> ex:role ex:Doctor .`);
     await write(joinUrl(baseUrl, '.abac/subjects/bob.example/profile/card'), `${prefixes}
       <${BOB}> ex:role ex:Nurse .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `${prefixes}
-      <#R001> a abac:Rule ; abac:grants acl:Read, acl:Write ;
-        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
+      <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write ;
+        abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .`);
     await write(joinUrl(baseUrl, '.abac/rules/R002'), `${prefixes}
-      <#R002> a abac:Rule ; abac:grants acl:Control ; abac:allOf [ ex:role ex:Nurse ], [ ex:category ex:Medical ] .`);
+      <#R002> a abac:Rule ; abac:allow acl:Control ; abac:allOf [ ex:role ex:Nurse ], [ ex:fileType ex:Medical ] .`);
   });
 
   afterAll(async(): Promise<void> => {
     await app.stop();
   });
 
-  it('grants access to an agent no policy mentions, when a rule matches them.', async(): Promise<void> => {
+  it('allows access to an agent no policy mentions, when a rule matches them.', async(): Promise<void> => {
     await expect(send(target, ALICE)).resolves.toBe(200);
   });
 
@@ -99,37 +99,37 @@ describe('An LDP handler with the grant-only ABAC layer', (): void => {
     await expect(send(target)).resolves.toBe(401);
   });
 
-  it('does not remove access that ACP granted.', async(): Promise<void> => {
+  it('does not remove access that ACP allowed.', async(): Promise<void> => {
     await expect(send(bobsResource, BOB)).resolves.toBe(200);
   });
 
-  it('lets a rule granting Write create and delete resources.', async(): Promise<void> => {
+  it('lets a rule allowing Write create and delete resources.', async(): Promise<void> => {
     const created = joinUrl(baseUrl, 'records/new/note.ttl');
     await expect(send(created, ALICE, 'PUT', '<> a <#Note> .')).resolves.toBe(201);
     await expect(send(created, ALICE, 'DELETE')).resolves.toBe(205);
   });
 
-  it('never gives access to an ACR, not even through a rule granting Control.', async(): Promise<void> => {
+  it('never gives access to an ACR, not even through a rule allowing Control.', async(): Promise<void> => {
     const acr = `${bobsResource}.acr`;
     await expect(send(acr, ALICE)).resolves.toBe(403);
     await expect(send(acr, ALICE, 'PUT', '<#policy> a <#Policy> .')).resolves.toBe(403);
     await expect(send(acr, BOB)).resolves.toBe(403);
   });
 
-  it('cannot grant access to the server internals, whatever the rules say.', async(): Promise<void> => {
+  it('cannot allow access to the server internals, whatever the rules say.', async(): Promise<void> => {
     await expect(send(joinUrl(baseUrl, '.internal/'), ALICE)).resolves.toBe(403);
   });
 
-  it('cannot grant access to the ABAC store itself.', async(): Promise<void> => {
+  it('cannot allow access to the ABAC store itself.', async(): Promise<void> => {
     await expect(send(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), ALICE)).resolves.toBe(403);
   });
 
   it('ignores a rule that does not condition on the resource.', async(): Promise<void> => {
     await write(joinUrl(baseUrl, '.abac/rules/R003'), `${prefixes}
-      <#R003> a abac:Rule ; abac:grants acl:Read ; abac:allOf [ ex:role ex:Nurse ] .`);
+      <#R003> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Nurse ] .`);
     await write(joinUrl(baseUrl, '.abac/rules/R004'), `${prefixes}
-      <#R004> a abac:Rule ; abac:grants acl:Read ;
-        abac:allOf [ ex:role ex:Nurse ] ; abac:noneOf [ ex:category ex:Uncategorised ] .`);
+      <#R004> a abac:Rule ; abac:allow acl:Read ;
+        abac:allOf [ ex:role ex:Nurse ] ; abac:noneOf [ ex:fileType ex:Unspecified ] .`);
     await expect(send(target, BOB)).resolves.toBe(403);
   });
 });

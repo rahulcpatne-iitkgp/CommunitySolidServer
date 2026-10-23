@@ -1,49 +1,30 @@
+import type { AttributeMatcher } from '../PolicyEvaluator';
+import { evaluatePolicy } from '../PolicyEvaluator';
 import type { AttributeCondition, AttributeVector, Rule } from './AbacTypes';
 
-/**
- * Whether the vector's value for the condition's attribute is one of the listed values.
- */
-function satisfies(condition: AttributeCondition, vector: AttributeVector): boolean {
-  return condition.values.includes(vector[condition.attribute]);
+function toMatcher(condition: AttributeCondition): AttributeMatcher {
+  return { iri: condition.attribute, agent: [], client: [], issuer: [], vc: [], attributes: [ condition ]};
 }
 
-/**
- * Whether the vector has a value for the condition's attribute.
- */
-function isValued(condition: AttributeCondition, vector: AttributeVector): boolean {
-  return typeof vector[condition.attribute] === 'string';
-}
-
-/**
- * Whether the rule's conditions hold for the given attribute vector.
- * A rule without any conditions never matches, so an empty rule cannot grant everything.
- * Neither does a rule with a condition on an attribute the vector has no value for,
- * so a `noneOf` condition naming an undefined attribute cannot hold for everyone.
- */
-function matches(rule: Rule, vector: AttributeVector): boolean {
-  const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
-  if (conditions.length === 0 || !conditions.every((condition): boolean => isValued(condition, vector))) {
-    return false;
-  }
-  return rule.allOf.every((condition): boolean => satisfies(condition, vector)) &&
-    (rule.anyOf.length === 0 || rule.anyOf.some((condition): boolean => satisfies(condition, vector))) &&
-    !rule.noneOf.some((condition): boolean => satisfies(condition, vector));
-}
-
-/**
- * Returns the union of the ACL modes granted by every rule matching the given attribute vector.
- *
- * @param rules - Rules of the global catalogue.
- * @param vector - Attribute vector to evaluate them against.
- */
+/** Returns the union of ACL modes allowed by definitely matching catalogue rules. */
 export function evaluateRules(rules: Iterable<Rule>, vector: AttributeVector): Set<string> {
-  const granted = new Set<string>();
+  const allowed = new Set<string>();
   for (const rule of rules) {
-    if (matches(rule, vector)) {
-      for (const mode of rule.grants) {
-        granted.add(mode);
+    const conditions = [ ...rule.allOf, ...rule.anyOf, ...rule.noneOf ];
+    // Keep the catalogue's stricter rule: every condition must have a value, including alternatives.
+    if (conditions.some(({ attribute }): boolean => typeof vector[attribute] !== 'string')) {
+      continue;
+    }
+    const policy = {
+      allOf: rule.allOf.map(toMatcher),
+      anyOf: rule.anyOf.map(toMatcher),
+      noneOf: rule.noneOf.map(toMatcher),
+    };
+    if (evaluatePolicy(policy, { target: '' }, vector).definite) {
+      for (const mode of rule.allow) {
+        allowed.add(mode);
       }
     }
   }
-  return granted;
+  return allowed;
 }

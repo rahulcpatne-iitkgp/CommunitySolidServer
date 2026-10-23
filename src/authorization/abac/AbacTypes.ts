@@ -19,12 +19,12 @@ export interface AttributeCondition {
 }
 
 /**
- * A rule from the global catalogue: the ACL modes it grants when its conditions hold.
+ * A rule from the global catalogue: the ACL modes it allows when its conditions hold.
  * `allOf` requires every condition, `anyOf` at least one, and `noneOf` none.
  */
 export interface Rule {
   iri: string;
-  grants: Set<string>;
+  allow: Set<string>;
   allOf: AttributeCondition[];
   anyOf: AttributeCondition[];
   noneOf: AttributeCondition[];

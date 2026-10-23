@@ -39,7 +39,7 @@ describe('AbacUtil', (): void => {
       abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .
     ex:department a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
       abac:value ex:Unknown, ex:Cardiology, ex:Emergency, ex:Oncology ; abac:defaultValue ex:Unknown .
-    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+    ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
       abac:value ex:Any, ex:Medical ; abac:defaultValue ex:Any .
     ex:unscoped a abac:AttributeDefinition ; abac:value ex:Any ; abac:defaultValue ex:Any .
     ex:misscoped a abac:AttributeDefinition ; abac:appliesTo abac:Subjects ;
@@ -55,11 +55,11 @@ describe('AbacUtil', (): void => {
 
   const rules = parse(`
     <#R001> a abac:Rule ;
-      abac:grants acl:Read, acl:Write ;
+      abac:allow acl:Read, acl:Write ;
       abac:allOf  [ a ex:Condition ; ex:role ex:Doctor ; ex:status ex:Active ] ;
       abac:anyOf  [ ex:department ex:Cardiology, ex:Emergency ] ;
       abac:noneOf [ ex:status ex:Suspended ] .
-    <#R002> a abac:Rule ; abac:grants acl:Read .
+    <#R002> a abac:Rule ; abac:allow acl:Read .
   `);
 
   beforeEach((): void => {
@@ -79,7 +79,7 @@ describe('AbacUtil', (): void => {
       expect([ ...getAttributeDefinitions(definitions) ]).toEqual([
         definition('role', ABAC.Subject, [ 'None', 'Doctor' ]),
         definition('department', ABAC.Subject, [ 'Unknown', 'Cardiology', 'Emergency', 'Oncology' ]),
-        definition('category', ABAC.Resource, [ 'Any', 'Medical' ]),
+        definition('fileType', ABAC.Resource, [ 'Any', 'Medical' ]),
       ]);
       expect(logger.warn).toHaveBeenCalledTimes(6);
       expect(logger.warn).toHaveBeenLastCalledWith(expect.stringContaining(
@@ -97,7 +97,7 @@ describe('AbacUtil', (): void => {
       expect([ ...getRules(rules) ]).toEqual([
         {
           iri: `${baseUrl}#R001`,
-          grants: new Set([ `${acl}Read`, `${acl}Write` ]),
+          allow: new Set([ `${acl}Read`, `${acl}Write` ]),
           allOf: [
             { attribute: `${ex}role`, values: [ `${ex}Doctor` ]},
             { attribute: `${ex}status`, values: [ `${ex}Active` ]},
@@ -107,7 +107,7 @@ describe('AbacUtil', (): void => {
         },
         {
           iri: `${baseUrl}#R002`,
-          grants: new Set([ `${acl}Read` ]),
+          allow: new Set([ `${acl}Read` ]),
           allOf: [],
           anyOf: [],
           noneOf: [],
@@ -130,7 +130,7 @@ describe('AbacUtil', (): void => {
       expect(buildAttributeVector(defined, assignments, [ namedNode(alice) ])).toEqual({
         [`${ex}role`]: `${ex}Doctor`,
         [`${ex}department`]: `${ex}Unknown`,
-        [`${ex}category`]: `${ex}Any`,
+        [`${ex}fileType`]: `${ex}Any`,
       });
     });
 
@@ -138,25 +138,25 @@ describe('AbacUtil', (): void => {
       expect(buildAttributeVector(defined, new Store(), [ namedNode(alice) ])).toEqual({
         [`${ex}role`]: `${ex}None`,
         [`${ex}department`]: `${ex}Unknown`,
-        [`${ex}category`]: `${ex}Any`,
+        [`${ex}fileType`]: `${ex}Any`,
       });
     });
 
     it('takes each value from the most specific entity that assigns it.', (): void => {
       const assignments = parse(`
-        <${records}> ex:category ex:Medical ; ex:department ex:Cardiology .
+        <${records}> ex:fileType ex:Medical ; ex:department ex:Cardiology .
         <${note}> ex:department ex:Emergency .
       `);
       expect(buildAttributeVector(defined, assignments, entities)).toEqual({
         [`${ex}role`]: `${ex}None`,
         [`${ex}department`]: `${ex}Emergency`,
-        [`${ex}category`]: `${ex}Medical`,
+        [`${ex}fileType`]: `${ex}Medical`,
       });
     });
 
     it('leaves out an attribute assigned several values, or a value outside its space.', (): void => {
       const assignments = parse(`
-        <${records}> ex:department ex:Cardiology ; ex:category ex:Surgical .
+        <${records}> ex:department ex:Cardiology ; ex:fileType ex:Surgical .
         <${note}> ex:department ex:Emergency, ex:Oncology .
       `);
       expect(buildAttributeVector(defined, assignments, entities)).toEqual({
@@ -166,7 +166,7 @@ describe('AbacUtil', (): void => {
         expect.stringContaining(`${note} assigns ${ex}department several values`),
       );
       expect(logger.warn).toHaveBeenCalledWith(
-        `${records} assigns ${ex}category ${ex}Surgical, which is not one of its values`,
+        `${records} assigns ${ex}fileType ${ex}Surgical, which is not one of its values`,
       );
     });
   });
@@ -194,13 +194,13 @@ describe('AbacUtil', (): void => {
 
   describe('#buildEnvironmentVector', (): void => {
     it('uses the resolved value where there is one in the space, the default otherwise.', (): void => {
-      const resolved = { [`${ex}role`]: `${ex}Doctor`, [`${ex}category`]: `${ex}Elsewhere` };
+      const resolved = { [`${ex}role`]: `${ex}Doctor`, [`${ex}fileType`]: `${ex}Elsewhere` };
       expect(buildEnvironmentVector(defined, resolved)).toEqual({
         [`${ex}role`]: `${ex}Doctor`,
         [`${ex}department`]: `${ex}Unknown`,
       });
       expect(logger.warn).toHaveBeenCalledWith(
-        `The request has ${ex}category ${ex}Elsewhere, which is not one of its values`,
+        `The request has ${ex}fileType ${ex}Elsewhere, which is not one of its values`,
       );
     });
   });

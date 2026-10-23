@@ -36,7 +36,7 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
 
   const abac = joinUrl(baseUrl, '.abac/');
   const definition = joinUrl(abac, 'definitions/role');
-  const resourceDefinition = joinUrl(abac, 'definitions/category');
+  const resourceDefinition = joinUrl(abac, 'definitions/fileType');
   const subject = joinUrl(abac, 'subjects/alice.example/profile/card');
   const resource = joinUrl(abac, 'resources/localhost/records');
   const rule = joinUrl(abac, 'rules/R001');
@@ -75,12 +75,12 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
     const documents = {
       [definition]: `ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
         abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`,
-      [resourceDefinition]: `ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`,
+      [resourceDefinition]: `ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Unspecified, ex:Medical ; abac:defaultValue ex:Unspecified .`,
       [subject]: `<${ALICE}> ex:role ex:Doctor .`,
-      [resource]: `<${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical .`,
-      [rule]: `<#R001> a abac:Rule ; abac:grants acl:Read ;
-        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`,
+      [resource]: `<${joinUrl(baseUrl, 'records/')}> ex:fileType ex:Medical .`,
+      [rule]: `<#R001> a abac:Rule ; abac:allow acl:Read ;
+        abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .`,
     };
     for (const [ url, turtle ] of Object.entries(documents)) {
       await expect(send(url, ADMIN, 'PUT', turtle)).resolves.toBe(201);
@@ -90,7 +90,7 @@ describe('An LDP handler with the ABAC store guarded by its administrator', (): 
   it('refuses writes to the store from everyone else, the owner included.', async(): Promise<void> => {
     const writes: [string, string, string?][] = [
       [ subject, 'PUT', `<${ALICE}> ex:role ex:Surgeon .` ],
-      [ joinUrl(abac, 'rules/R002'), 'PUT', '<#R002> a abac:Rule ; abac:grants acl:Write .' ],
+      [ joinUrl(abac, 'rules/R002'), 'PUT', '<#R002> a abac:Rule ; abac:allow acl:Write .' ],
       [ `${rule}.acr`, 'PUT', `<#policy> acl:agent <${ALICE}> .` ],
       [ rule, 'DELETE' ],
     ];
