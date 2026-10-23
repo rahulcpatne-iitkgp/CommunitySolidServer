@@ -205,7 +205,8 @@ describe('An AcpReader', (): void => {
     compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
   });
 
-  it('adds outside allowed modes, other than Control, unless an applying policy denies them.', async(): Promise<void> => {
+  it('adds outside allowed modes, other than Control, ' +
+    'unless an applying policy denies them.', async(): Promise<void> => {
     const alice = 'http://example.com/alice#me';
     const target = { path: joinUrl(baseUrl, 'foo') };
     credentials = { agent: { webId: alice }};

@@ -97,9 +97,9 @@ describe('An LDP handler whose ABAC allows a pod owner can veto', (): void => {
     await write(joinUrl(baseUrl, '.abac/definitions/role'), `
       ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
         abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`);
-    await write(joinUrl(baseUrl, '.abac/definitions/category'), `
-      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
+    await write(joinUrl(baseUrl, '.abac/definitions/fileType'), `
+      ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Unspecified, ex:Medical ; abac:defaultValue ex:Unspecified .`);
     await write(joinUrl(baseUrl, '.abac/definitions/authMethod'), `
       abac:authMethod a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
         abac:value abac:Unsecure, abac:NoCredentials ; abac:defaultValue abac:NoCredentials .`);
@@ -107,20 +107,21 @@ describe('An LDP handler whose ABAC allows a pod owner can veto', (): void => {
       <${ALICE}> ex:role ex:Doctor . <${CAROL}> ex:role ex:Doctor .`);
     // The owner's labels also claim the neighbour's records, which a document mirroring the owner's pod cannot label.
     await send(labels('owner'), ADMIN, 'PUT', `${prefixes}
-      <${pod}> ex:category ex:Medical .
-      <${joinUrl(neighbourPod, 'records/')}> ex:category ex:Medical .`);
+      <${pod}> ex:fileType ex:Medical .
+      <${joinUrl(neighbourPod, 'records/')}> ex:fileType ex:Medical .`);
     await send(labels('neighbour'), ADMIN, 'PUT', `${prefixes}
-      <${neighbourPod}> ex:category ex:Uncategorised .`);
+      <${neighbourPod}> ex:fileType ex:Unspecified .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `
       <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write, acl:Control ;
-        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
+        abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .`);
   });
 
   afterAll(async(): Promise<void> => {
     await app.stop();
   });
 
-  it('refuses an outside allow the owner denies, for that mode and agent only, until they lift it.', async(): Promise<void> => {
+  it('refuses an outside allow the owner denies, for that mode and agent only, ' +
+    'until they lift it.', async(): Promise<void> => {
     await expect(send(note, ALICE)).resolves.toBe(200);
 
     await expect(setAcr(note, [ acp.createPolicy({ deny: [ 'read' ], anyOf: [ agent(ALICE) ]}) ])).resolves.toBe(201);
@@ -204,7 +205,7 @@ describe('An LDP handler whose ABAC allows a pod owner can veto', (): void => {
     'without seeing subject assignments.', async(): Promise<void> => {
     const shared = joinUrl(pod, 'shared.ttl');
     expect([ 201, 205 ]).toContain(await setAcr(records));
-    const conditions = 'ex:role ex:Doctor ; ex:category ex:Uncategorised ; abac:authMethod abac:Unsecure';
+    const conditions = 'ex:role ex:Doctor ; ex:fileType ex:Unspecified ; abac:authMethod abac:Unsecure';
     expect([ 201, 205 ]).toContain(await setAttributeAcr(shared, 'acp:allow acl:Read', conditions));
     await expect(send(shared, ALICE)).resolves.toBe(200);
     await expect(send(shared, CAROL)).resolves.toBe(200);

@@ -66,21 +66,21 @@ describe('An LDP handler with the allow-only ABAC layer', (): void => {
     await write(joinUrl(baseUrl, '.abac/definitions/role'), `${prefixes}
       ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
         abac:value ex:None, ex:Doctor, ex:Nurse ; abac:defaultValue ex:None .`);
-    await write(joinUrl(baseUrl, '.abac/definitions/category'), `${prefixes}
-      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-        abac:value ex:Uncategorised, ex:Medical ; abac:defaultValue ex:Uncategorised .`);
+    await write(joinUrl(baseUrl, '.abac/definitions/fileType'), `${prefixes}
+      ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Unspecified, ex:Medical ; abac:defaultValue ex:Unspecified .`);
     // The whole server is labelled medical, its own namespaces included, so only the exclusions keep rules from them.
     await write(joinUrl(baseUrl, '.abac/resources/localhost'), `${prefixes}
-      <${baseUrl}> ex:category ex:Medical .`);
+      <${baseUrl}> ex:fileType ex:Medical .`);
     await write(joinUrl(baseUrl, '.abac/subjects/alice.example/profile/card'), `${prefixes}
       <${ALICE}> ex:role ex:Doctor .`);
     await write(joinUrl(baseUrl, '.abac/subjects/bob.example/profile/card'), `${prefixes}
       <${BOB}> ex:role ex:Nurse .`);
     await write(joinUrl(baseUrl, '.abac/rules/R001'), `${prefixes}
       <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write ;
-        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
+        abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .`);
     await write(joinUrl(baseUrl, '.abac/rules/R002'), `${prefixes}
-      <#R002> a abac:Rule ; abac:allow acl:Control ; abac:allOf [ ex:role ex:Nurse ], [ ex:category ex:Medical ] .`);
+      <#R002> a abac:Rule ; abac:allow acl:Control ; abac:allOf [ ex:role ex:Nurse ], [ ex:fileType ex:Medical ] .`);
   });
 
   afterAll(async(): Promise<void> => {
@@ -129,7 +129,7 @@ describe('An LDP handler with the allow-only ABAC layer', (): void => {
       <#R003> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Nurse ] .`);
     await write(joinUrl(baseUrl, '.abac/rules/R004'), `${prefixes}
       <#R004> a abac:Rule ; abac:allow acl:Read ;
-        abac:allOf [ ex:role ex:Nurse ] ; abac:noneOf [ ex:category ex:Uncategorised ] .`);
+        abac:allOf [ ex:role ex:Nurse ] ; abac:noneOf [ ex:fileType ex:Unspecified ] .`);
     await expect(send(target, BOB)).resolves.toBe(403);
   });
 });

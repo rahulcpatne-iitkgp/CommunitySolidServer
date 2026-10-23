@@ -64,17 +64,17 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
     await writeAbac('definitions/role', `
       ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
         abac:value ex:None, ex:Doctor, ex:Nurse ; abac:defaultValue ex:None .`);
-    await writeAbac('definitions/category', `
-      ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-        abac:value ex:Uncategorised, ex:Medical, ex:Administrative ; abac:defaultValue ex:Uncategorised .`);
-    await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor ; ex:category ex:Medical .`);
+    await writeAbac('definitions/fileType', `
+      ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+        abac:value ex:Unspecified, ex:Medical, ex:Administrative ; abac:defaultValue ex:Unspecified .`);
+    await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor ; ex:fileType ex:Medical .`);
     await writeAbac('subjects/bob.example/profile/card', `<${BOB}> ex:role ex:Nurse .`);
     await writeAbac('resources/localhost/records', `
-      <${joinUrl(baseUrl, 'records/')}> ex:category ex:Medical ; ex:role ex:Doctor .
-      <${joinUrl(baseUrl, 'records/admin/')}> ex:category ex:Administrative .`);
+      <${joinUrl(baseUrl, 'records/')}> ex:fileType ex:Medical ; ex:role ex:Doctor .
+      <${joinUrl(baseUrl, 'records/admin/')}> ex:fileType ex:Administrative .`);
     await writeAbac('rules/R001', `
       <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write ;
-        abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .`);
+        abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .`);
   });
 
   afterAll(async(): Promise<void> => {
@@ -115,10 +115,10 @@ describe('An LDP handler with ABAC rules over resource attributes', (): void => 
     await writeAbac('subjects/carol.example/profile/card', `<${CAROL}> ex:role ex:Surgeon .`);
     await writeAbac('rules/R003', `
       <#R003> a abac:Rule ; abac:allow acl:Write ;
-        abac:allOf [ ex:category ex:Administrative ] ; abac:noneOf [ ex:role ex:Nurse ] .`);
+        abac:allOf [ ex:fileType ex:Administrative ] ; abac:noneOf [ ex:role ex:Nurse ] .`);
     await writeAbac('rules/R004', `
       <#R004> a abac:Rule ; abac:allow acl:Write ;
-        abac:allOf [ ex:category ex:Administrative ] ; abac:noneOf [ ex:role ex:Porter ] .`);
+        abac:allOf [ ex:fileType ex:Administrative ] ; abac:noneOf [ ex:role ex:Porter ] .`);
     await expect(send(rota, ALICE, 'PUT', 'rota')).resolves.toBe(205);
     await expect(send(rota, CAROL, 'PUT', 'rota')).resolves.toBe(403);
     await expect(send(rota, BOB, 'PUT', 'rota')).resolves.toBe(403);

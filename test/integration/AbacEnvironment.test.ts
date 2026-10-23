@@ -37,7 +37,7 @@ function url(port: number, path: string): string {
 
 /**
  * Starts a server with the ABAC layer and the given environment policy, seeded identically in both cases.
- * The rules each allow read on one category of resource, so a refusal names the attribute that caused it.
+ * The rules each allow read on one semantic file type, so a refusal names the attribute that caused it.
  */
 async function startServer(port: number, policy: string, variables: Record<string, unknown>): Promise<App> {
   const baseUrl = `http://localhost:${port}/`;
@@ -61,15 +61,15 @@ async function startServer(port: number, policy: string, variables: Record<strin
     await write(joinUrl('.abac/', path), `${prefixes}${turtle}`, 'text/turtle');
   }
 
-  for (const category of [ 'hours', 'network', 'proof' ]) {
-    await write(`${category}/note.txt`, 'data', 'text/plain');
+  for (const folder of [ 'hours', 'network', 'proof' ]) {
+    await write(`${folder}/note.txt`, 'data', 'text/plain');
   }
   await writeAbac('definitions/role', `
     ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
       abac:value ex:None, ex:Doctor ; abac:defaultValue ex:None .`);
-  await writeAbac('definitions/category', `
-    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-      abac:value ex:Uncategorised, ex:HoursOnly, ex:InternalOnly, ex:ProofOnly ; abac:defaultValue ex:Uncategorised .`);
+  await writeAbac('definitions/fileType', `
+    ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+      abac:value ex:Unspecified, ex:HoursOnly, ex:InternalOnly, ex:ProofOnly ; abac:defaultValue ex:Unspecified .`);
   await writeAbac('definitions/period', `
     abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
       abac:value abac:BusinessHours, abac:OutOfHours ; abac:defaultValue abac:OutOfHours .`);
@@ -81,20 +81,20 @@ async function startServer(port: number, policy: string, variables: Record<strin
       abac:value abac:BoundToken, abac:BearerToken, abac:Unsecure, abac:NoCredentials ;
       abac:defaultValue abac:NoCredentials .`);
   await writeAbac('subjects/alice.example/profile/card', `<${ALICE}> ex:role ex:Doctor .`);
-  const categories = { hours: 'HoursOnly', network: 'InternalOnly', proof: 'ProofOnly' };
-  for (const [ folder, category ] of Object.entries(categories)) {
+  const fileTypes = { hours: 'HoursOnly', network: 'InternalOnly', proof: 'ProofOnly' };
+  for (const [ folder, fileType ] of Object.entries(fileTypes)) {
     await writeAbac(`resources/localhost/${folder}`, `
-      <${joinUrl(baseUrl, folder, '/')}> ex:category ex:${category} .`);
+      <${joinUrl(baseUrl, folder, '/')}> ex:fileType ex:${fileType} .`);
   }
   await writeAbac('rules/R001', `
     <#R001> a abac:Rule ; abac:allow acl:Read ;
-      abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:HoursOnly ], [ abac:period abac:BusinessHours ] .`);
+      abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:HoursOnly ], [ abac:period abac:BusinessHours ] .`);
   await writeAbac('rules/R002', `
     <#R002> a abac:Rule ; abac:allow acl:Read ;
-      abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:InternalOnly ], [ abac:network abac:Internal ] .`);
+      abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:InternalOnly ], [ abac:network abac:Internal ] .`);
   await writeAbac('rules/R003', `
     <#R003> a abac:Rule ; abac:allow acl:Read ;
-      abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:ProofOnly ], [ abac:authMethod abac:BoundToken ] .`);
+      abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:ProofOnly ], [ abac:authMethod abac:BoundToken ] .`);
   return app;
 }
 

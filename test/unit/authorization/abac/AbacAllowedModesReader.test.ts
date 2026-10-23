@@ -36,47 +36,47 @@ describe('An AbacAllowedModesReader', (): void => {
     ${turtle}`));
   }
 
-  const roleAndCategory = `
+  const roleAndFileType = `
     ex:role a abac:AttributeDefinition ; abac:appliesTo abac:Subject ;
       abac:value ex:None, ex:Doctor, ex:Surgeon ; abac:defaultValue ex:None .
-    ex:category a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
-      abac:value ex:Uncategorised, ex:Medical, ex:Administrative ; abac:defaultValue ex:Uncategorised .`;
-  const definitions = parse(roleAndCategory);
-  const withPeriod = parse(`${roleAndCategory}
+    ex:fileType a abac:AttributeDefinition ; abac:appliesTo abac:Resource ;
+      abac:value ex:Unspecified, ex:Medical, ex:Administrative ; abac:defaultValue ex:Unspecified .`;
+  const definitions = parse(roleAndFileType);
+  const withPeriod = parse(`${roleAndFileType}
     abac:period a abac:AttributeDefinition ; abac:appliesTo abac:Environment ;
       abac:value abac:BusinessHours, abac:OutOfHours ; abac:defaultValue abac:OutOfHours .
   `);
   // Each also claims an attribute that describes the other kind of entity, which must be ignored.
-  const subjects = parse(`<${alice}> ex:role ex:Doctor ; ex:category ex:Medical .`);
+  const subjects = parse(`<${alice}> ex:role ex:Doctor ; ex:fileType ex:Medical .`);
   const resources = parse(`
-    <${baseUrl}records/> ex:category ex:Medical ; ex:role ex:Doctor .
-    <${baseUrl}records/admin/> ex:category ex:Administrative .
+    <${baseUrl}records/> ex:fileType ex:Medical ; ex:role ex:Doctor .
+    <${baseUrl}records/admin/> ex:fileType ex:Administrative .
   `);
 
   // Matches medical and unlabelled resources alike, so only the exclusions keep it from the server's own.
   const matching = parse(`
     <#R001> a abac:Rule ; abac:allow acl:Read, acl:Write, acl:Control ;
-      abac:allOf [ ex:role ex:Doctor ] ; abac:anyOf [ ex:category ex:Medical ], [ ex:category ex:Uncategorised ] .
+      abac:allOf [ ex:role ex:Doctor ] ; abac:anyOf [ ex:fileType ex:Medical ], [ ex:fileType ex:Unspecified ] .
   `);
   const nonMatching = parse(`
-    <#R002> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Surgeon ], [ ex:category ex:Medical ] .
+    <#R002> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Surgeon ], [ ex:fileType ex:Medical ] .
   `);
   const medical = parse(`
-    <#R003> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
+    <#R003> a abac:Rule ; abac:allow acl:Read ; abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .
   `);
   const duringHours = parse(`
     <#R004> a abac:Rule ; abac:allow acl:Read ;
-      abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ], [ abac:period abac:BusinessHours ] .
+      abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ], [ abac:period abac:BusinessHours ] .
   `);
   const unmatchable = parse(`
     <#R005> a abac:Rule ; abac:allow acl:Write ;
-      abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] ; abac:noneOf [ ex:status ex:Suspended ] .
+      abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] ; abac:noneOf [ ex:status ex:Suspended ] .
     <#R006> a abac:Rule ; abac:allow acl:Write ;
-      abac:allOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] ; abac:noneOf [ ex:category ex:Psychiatric ] .
+      abac:allOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] ; abac:noneOf [ ex:fileType ex:Psychiatric ] .
     <#R007> a abac:Rule ; abac:allow acl:Write ; abac:allOf [ ex:role ex:Doctor ] .
     <#R008> a abac:Rule ; abac:allow acl:Write ;
-      abac:allOf [ ex:role ex:Doctor ] ; abac:noneOf [ ex:category ex:Administrative ] .
-    <#R009> a abac:Rule ; abac:allow acl:Write ; abac:anyOf [ ex:role ex:Doctor ], [ ex:category ex:Medical ] .
+      abac:allOf [ ex:role ex:Doctor ] ; abac:noneOf [ ex:fileType ex:Administrative ] .
+    <#R009> a abac:Rule ; abac:allow acl:Write ; abac:anyOf [ ex:role ex:Doctor ], [ ex:fileType ex:Medical ] .
   `);
 
   const noAllowedModes = new IdentifierSetMultiMap<string>();
@@ -188,7 +188,7 @@ describe('An AbacAllowedModesReader', (): void => {
   it('still prepares resource attributes for an anonymous owner matcher, ' +
     'without catalogue allowed modes.', async(): Promise<void> => {
     const { context, allowedModes } = await createReader(matching).prepare({ credentials: {}, requestedModes });
-    expect(context.vectors.get(target)).toEqual({ 'http://example.org/hospital#category':
+    expect(context.vectors.get(target)).toEqual({ 'http://example.org/hospital#fileType':
       'http://example.org/hospital#Medical' });
     compareMaps(allowedModes, noAllowedModes);
   });

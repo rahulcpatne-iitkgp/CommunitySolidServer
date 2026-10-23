@@ -101,7 +101,7 @@ describe('An AbacDataLoader', (): void => {
     resources[server] = container(server, [ records ]);
     resources[records] = container(records, [ `${records}2026` ]);
     resources[`${records}2026`] = document(`${records}2026`, parse(
-      `<${baseUrl}records/2026/> ex:category ex:Medical ; ex:sensitivity ex:Internal .`,
+      `<${baseUrl}records/2026/> ex:fileType ex:Medical ; ex:sensitivity ex:Internal .`,
     ));
 
     await expect(loader.readSubjectAttributes()).resolves.toEqual(expect.objectContaining({ size: 1 }));
@@ -113,11 +113,11 @@ describe('An AbacDataLoader', (): void => {
     resources[resourceAttributes] = container(resourceAttributes, [ `${resourceAttributes}example.com/` ]);
     resources[`${resourceAttributes}example.com/`] = container(`${resourceAttributes}example.com/`, [ records ]);
     resources[records] = document(records, parse(`
-      <${baseUrl}records> ex:category ex:Medical .
-      <${baseUrl}records/> ex:category ex:Medical .
-      <${baseUrl}records/admin/> ex:category ex:Administrative .
-      <${baseUrl}records-2026/> ex:category ex:Medical .
-      <${baseUrl}bob/records/> ex:category ex:Medical .
+      <${baseUrl}records> ex:fileType ex:Medical .
+      <${baseUrl}records/> ex:fileType ex:Medical .
+      <${baseUrl}records/admin/> ex:fileType ex:Administrative .
+      <${baseUrl}records-2026/> ex:fileType ex:Medical .
+      <${baseUrl}bob/records/> ex:fileType ex:Medical .
     `));
 
     await expect(loader.readResourceAttributes()).resolves.toEqual(expect.objectContaining({ size: 3 }));
